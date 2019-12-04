@@ -1,5 +1,6 @@
 package org.eclipse.lsp4xml.extensions.maven;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.Set;
 
@@ -16,6 +17,7 @@ import org.eclipse.lsp4xml.commons.snippets.SnippetRegistry;
 import org.eclipse.lsp4xml.dom.DOMDocument;
 import org.eclipse.lsp4xml.dom.DOMElement;
 import org.eclipse.lsp4xml.extensions.maven.searcher.ArtifactSearcherManager;
+import org.eclipse.lsp4xml.extensions.maven.searcher.LocalSubModuleSearcher;
 import org.eclipse.lsp4xml.extensions.maven.searcher.ParentSearcher;
 import org.eclipse.lsp4xml.services.extensions.CompletionParticipantAdapter;
 import org.eclipse.lsp4xml.services.extensions.ICompletionRequest;
@@ -52,6 +54,9 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 				collectGroupIdCompletion(request, response);				
 			}
 			break;
+			collectGroupIdCompletion(request, response);
+		case "module":
+			collectSubModuleCompletion(request, response);
 		default:
 			initSnippets();
 			TextDocument document = parent.getOwnerDocument().getTextDocument();
@@ -65,6 +70,35 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 						return parent.getLocalName().equals(context.getValue());
 					}).forEach(completionItem -> response.addCompletionItem(completionItem));
 		}
+	}
+
+	private void collectSubModuleCompletion(ICompletionRequest request, ICompletionResponse response) {
+		DOMElement node = request.getParentElement();
+		DOMDocument doc = request.getXMLDocument();
+
+		Range range = XMLPositionUtility.createRange(node.getStartTagCloseOffset() + 1, node.getEndTagOpenOffset(),
+				doc);
+		
+		try {
+			//TODO: Get the File properly without using substring
+			LocalSubModuleSearcher subModuleSearcher = LocalSubModuleSearcher.getInstance();
+			subModuleSearcher.setPomFile(new File(doc.getDocumentURI().substring(5)));
+			for (String module : subModuleSearcher.getSubModules()) {
+				String label = module;
+				CompletionItem item = new CompletionItem();
+				item.setLabel(label);
+				String insertText = label;
+				item.setKind(CompletionItemKind.Property);
+				item.setDocumentation(Either.forLeft(""));
+				item.setFilterText(insertText);
+				item.setTextEdit(new TextEdit(range, insertText));
+				item.setInsertTextFormat(InsertTextFormat.PlainText);
+				response.addCompletionItem(item);
+			}
+		} catch (IOException | XmlPullParserException e) {
+			e.printStackTrace();
+		}
+		
 	}
 
 	private void initSnippets() {
