@@ -57,6 +57,10 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			collectGroupIdCompletion(request, response);
 		case "module":
 			collectSubModuleCompletion(request, response);
+			if (!parent.getParentElement().getLocalName().equals("parent")){
+				collectGroupIdCompletion(request, response);				
+			}
+			break;
 		default:
 			initSnippets();
 			TextDocument document = parent.getOwnerDocument().getTextDocument();
