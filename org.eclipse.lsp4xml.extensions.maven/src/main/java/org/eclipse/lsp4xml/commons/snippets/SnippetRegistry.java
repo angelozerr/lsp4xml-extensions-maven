@@ -6,6 +6,7 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -132,7 +133,7 @@ public class SnippetRegistry {
 				return null;
 			}
 
-		}).filter(item -> item != null).collect(Collectors.toList());
+		}).filter(Objects::nonNull).collect(Collectors.toList());
 	}
 
 	private static MarkupContent createDocumentation(Snippet snippet, boolean canSupportMarkdown,

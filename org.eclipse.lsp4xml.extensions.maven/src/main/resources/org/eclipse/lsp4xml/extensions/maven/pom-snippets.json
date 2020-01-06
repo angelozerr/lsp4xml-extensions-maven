@@ -29,5 +29,19 @@
 			"type": "pom.xml",
 			"value": "plugins"
 		}
+	},
+	"Insert parent": {
+		"prefix": "parent",
+		"body": [
+			"\t<groupId>${1}</groupId>",
+			"\t<artifactId>${2}</artifactId>",
+			"\t<version>${3}</version>"
+		],
+		"description": "Insert parent",
+		"scope": "xml",
+		"context": {
+			"type": "pom.xml",
+			"value": "parent"
+		}
 	}
 }
