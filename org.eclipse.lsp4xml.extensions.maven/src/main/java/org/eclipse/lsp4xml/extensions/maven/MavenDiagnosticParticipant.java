@@ -1,21 +1,21 @@
 package org.eclipse.lsp4xml.extensions.maven;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
+import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DiagnosticSeverity;
-import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.jsonrpc.CancelChecker;
 import org.eclipse.lsp4xml.dom.DOMDocument;
 import org.eclipse.lsp4xml.dom.DOMElement;
 import org.eclipse.lsp4xml.dom.DOMNode;
 import org.eclipse.lsp4xml.services.extensions.diagnostics.IDiagnosticsParticipant;
-import org.eclipse.lsp4xml.utils.XMLPositionUtility;
 
 public class MavenDiagnosticParticipant implements IDiagnosticsParticipant {
 
@@ -57,15 +57,24 @@ public class MavenDiagnosticParticipant implements IDiagnosticsParticipant {
 
 	private HashMap<String, Function<DiagnosticRequest, Diagnostic>> configureDiagnosticFunctions(
 			DOMDocument xmlDocument) {
+		SubModuleValidator subModuleValidator= new SubModuleValidator();
+		try {
+			subModuleValidator.setPomFile(new File(xmlDocument.getDocumentURI().substring(5)));
+		} catch (IOException | XmlPullParserException e) {
+			// TODO: Use plug-in error logger
+			e.printStackTrace();
+		}
 		Function<DiagnosticRequest, Diagnostic> versionFunc = VersionValidator::validateVersion;
+		Function<DiagnosticRequest, Diagnostic> submoduleExistenceFunc = subModuleValidator::validateSubModuleExistence;
 		// Below is a mock Diagnostic function which creates a warning between inside
 		// <configuration> tags
 		Function<DiagnosticRequest, Diagnostic> configFunc = diagnosticReq -> new Diagnostic(diagnosticReq.getRange(),
 				"Configuration Error", DiagnosticSeverity.Warning, xmlDocument.getDocumentURI(), "XML");
-
+		
 		HashMap<String, Function<DiagnosticRequest, Diagnostic>> tagDiagnostics = new HashMap<>();
 		tagDiagnostics.put("version", versionFunc);
 		tagDiagnostics.put("configuration", configFunc);
+		tagDiagnostics.put("module", submoduleExistenceFunc);
 		return tagDiagnostics;
 	}
 
