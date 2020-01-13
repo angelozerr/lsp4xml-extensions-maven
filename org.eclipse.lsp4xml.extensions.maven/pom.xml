@@ -32,6 +32,7 @@
 		<dependency>
 			<groupId>org.lsp4xml</groupId>
 			<artifactId>org.eclipse.lsp4xml</artifactId>
+			<version>0.9.1</version>
 		</dependency>
 		<!-- https://mvnrepository.com/artifact/org.apache.maven/maven-artifact -->
 		<dependency>
