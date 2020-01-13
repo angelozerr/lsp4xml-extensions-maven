@@ -8,7 +8,6 @@ import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
 import org.eclipse.lsp4j.InsertTextFormat;
-import org.eclipse.lsp4j.MarkupKind;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.TextEdit;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
@@ -54,7 +53,6 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 				collectGroupIdCompletion(request, response);				
 			}
 			break;
-			collectGroupIdCompletion(request, response);
 		case "module":
 			collectSubModuleCompletion(request, response);
 			if (!parent.getParentElement().getLocalName().equals("parent")){
