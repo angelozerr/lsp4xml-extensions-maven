@@ -26,4 +26,3 @@ jobs:
         mkdir ~/.m2
         echo "<settings><servers><server><id>github</id><username>AObuchow</username><password>${GITHUB_TOKEN}</password></server></servers></settings>" > ~/.m2/settings.xml
         mvn -B clean verify deploy --file org.eclipse.lsp4xml.extensions.maven/pom.xml
-    - name: Deploy to Github Package Registry
