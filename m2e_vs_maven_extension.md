@@ -1,4 +1,5 @@
 # M2E Pom Editor vs Generic Editor with maven extension
+
 ## Editor feature comparison
 
 |Feature|Demo|Gerrit/Bugzilla ticket/Eclipse doc/Maven API reference|Supported in Maven Extension|Supported in M2E|User Value|Implementation Difficulty|
