@@ -9,6 +9,12 @@
 	</parent>
 	<artifactId>org.eclipse.lsp4xml.extensions.maven</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
+	<licenses>
+		<license>
+			<name>Eclipse Public License (EPL) v2.0</name>
+			<url>https://www.eclipse.org/org/documents/epl-2.0/EPL-2.0.html</url>
+		</license>
+	</licenses>
 	<repositories>
 		<repository>
 			<id>lsp4xml-releases</id>

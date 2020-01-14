@@ -1,3 +1,11 @@
+/*******************************************************************************
+ * Copyright (c) 2019-2020 Red Hat Inc. and others.
+ * This program and the accompanying materials are made
+ * available under the terms of the Eclipse Public License 2.0
+ * which is available at https://www.eclipse.org/legal/epl-2.0/
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *******************************************************************************/
 package org.eclipse.lsp4xml.extensions.maven;
 
 import java.io.File;
@@ -70,7 +78,7 @@ public class MavenDiagnosticParticipant implements IDiagnosticsParticipant {
 		// <configuration> tags
 		Function<DiagnosticRequest, Diagnostic> configFunc = diagnosticReq -> new Diagnostic(diagnosticReq.getRange(),
 				"Configuration Error", DiagnosticSeverity.Warning, xmlDocument.getDocumentURI(), "XML");
-		
+
 		HashMap<String, Function<DiagnosticRequest, Diagnostic>> tagDiagnostics = new HashMap<>();
 		tagDiagnostics.put("version", versionFunc);
 		tagDiagnostics.put("configuration", configFunc);
