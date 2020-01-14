@@ -1,4 +1,5 @@
 # M2E Pom Editor vs Generic Editor with maven extension
+
 ## Editor feature comparison
 
 |Feature|Demo|Gerrit/Bugzilla ticket/Eclipse doc/Maven API reference|Supported in Maven Extension|Supported in M2E|User Value|Implementation Difficulty|
@@ -7,7 +8,6 @@
 |Ctrl+Click on a \<plugin> to open its defining pom.xml | [demo](https://photos.app.goo.gl/nK9YiHgEXpgzPepe9) | [get artifact map from a project](https://maven.apache.org/ref/3.2.3/apidocs/org/apache/maven/project/MavenProject.html#getArtifactMap()) |No| Yes |High | High (need to resolve & fetch plugin first) |
 |Ctrl+Click inside a \<parent> tag to open the parent pom.xml (Local parent pom) | [demo](https://photos.app.goo.gl/jU7qkyaz9tssmHcGA) | [get top level project from a list of maven projects](http://maven.apache.org/ref/3.2.2/maven-core/apidocs/org/apache/maven/project/ProjectSorter.html#getTopLevelProject()) & [get parent](http://maven.apache.org/ref/3.2.2/maven-core/apidocs/org/apache/maven/project/MavenProject.html#getParent()) & [get parent (returns a file)](http://maven.apache.org/ref/3.2.2/maven-core/apidocs/org/apache/maven/project/MavenProject.html#getParentFile()) | No| Yes | Medium | Low |
 |Ctrl+Click inside a \<parent> tag to open the parent pom.xml (Remote parent pom) | View above story | View above story | No | Yes | Medium | High |
-|
 Ctrl+Click on a \<module> inside a parent pom to open a module’s pom.xml |[demo](https://photos.app.goo.gl/dtVJZWne2hmFGQhv5) | [getModules](http://maven.apache.org/ref/3.2.2/maven-core/apidocs/org/apache/maven/project/MavenProject.html#getModules()) | No | Yes | Medium | Low |
 |Icons used in outline view for different elements | [demo](https://photos.app.goo.gl/scdTvL8az3uz1zbc9) |  | No | Yes | Medium | Low |
 |Click on editor element to set outline view to corresponding element | [demo](https://photos.app.goo.gl/M6LvAnNgqfLoVTaD8) |  | No (Clicking collapses the outline view) | Yes | Low | Low (it works for HTML) |
