@@ -2,39 +2,28 @@
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 	<modelVersion>4.0.0</modelVersion>
-	<parent>
-		<groupId>org.lsp4xml</groupId>
-		<artifactId>lsp4xml-extensions</artifactId>
-		<version>0.9.1</version>
-	</parent>
+
+	<groupId>org.lsp4xml</groupId>
 	<artifactId>maven-xmlls-extension</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
+
 	<licenses>
 		<license>
 			<name>Eclipse Public License (EPL) v2.0</name>
 			<url>https://www.eclipse.org/org/documents/epl-2.0/EPL-2.0.html</url>
 		</license>
 	</licenses>
-	<repositories>
-		<repository>
-			<id>lsp4xml-releases</id>
-			<url>https://dl.bintray.com/lsp4xml/releases</url>
-			<snapshots>
-				<enabled>false</enabled>
-			</snapshots>
-			<releases>
-				<enabled>true</enabled>
-			</releases>
-		</repository>
-	</repositories>
+
+	<properties>
+		<maven.compiler.source>1.8</maven.compiler.source>
+		<maven.compiler.target>1.8</maven.compiler.target>
+	</properties>
+
 	<dependencies>
-		<dependency>
-			<groupId>org.eclipse.lsp4j</groupId>
-			<artifactId>org.eclipse.lsp4j</artifactId>
-		</dependency>
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
+			<version>4.13</version>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
@@ -42,23 +31,18 @@
 			<artifactId>org.eclipse.lsp4xml</artifactId>
 			<version>0.9.1</version>
 		</dependency>
-		<!-- https://mvnrepository.com/artifact/org.apache.maven/maven-artifact -->
 		<dependency>
 			<groupId>org.apache.maven</groupId>
 			<artifactId>maven-artifact</artifactId>
 			<version>3.6.3</version>
 			<scope>compile</scope>
 		</dependency>
-
-		<!-- https://mvnrepository.com/artifact/org.apache.maven/maven-project -->
 		<dependency>
 			<groupId>org.apache.maven</groupId>
 			<artifactId>maven-project</artifactId>
 			<version>3.0-alpha-2</version>
 			<scope>compile</scope>
 		</dependency>
-
-		<!-- https://mvnrepository.com/artifact/org.apache.maven/maven-plugin-api -->
 		<dependency>
 			<groupId>org.apache.maven</groupId>
 			<artifactId>maven-plugin-api</artifactId>
@@ -75,6 +59,20 @@
 			</plugin>
 		</plugins>
 	</build>
+
+	<repositories>
+		<repository>
+			<id>lsp4xml-releases</id>
+			<url>https://dl.bintray.com/lsp4xml/releases</url>
+			<snapshots>
+				<enabled>false</enabled>
+			</snapshots>
+			<releases>
+				<enabled>true</enabled>
+			</releases>
+		</repository>
+	</repositories>
+
 	<distributionManagement>
 		<snapshotRepository>
 			<id>github</id>
