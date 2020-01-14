@@ -1,3 +1,11 @@
+/*******************************************************************************
+ * Copyright (c) 2019-2020 Red Hat Inc. and others.
+ * This program and the accompanying materials are made
+ * available under the terms of the Eclipse Public License 2.0
+ * which is available at https://www.eclipse.org/legal/epl-2.0/
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *******************************************************************************/
 package org.eclipse.lsp4xml.extensions.maven;
 
 import java.io.File;
@@ -50,13 +58,13 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			break;
 		case "groupId":
 			if (!parent.getParentElement().getLocalName().equals("parent")){
-				collectGroupIdCompletion(request, response);				
+				collectGroupIdCompletion(request, response);
 			}
 			break;
 		case "module":
 			collectSubModuleCompletion(request, response);
 			if (!parent.getParentElement().getLocalName().equals("parent")){
-				collectGroupIdCompletion(request, response);				
+				collectGroupIdCompletion(request, response);
 			}
 			break;
 		default:
@@ -80,7 +88,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 
 		Range range = XMLPositionUtility.createRange(node.getStartTagCloseOffset() + 1, node.getEndTagOpenOffset(),
 				doc);
-		
+
 		try {
 			//TODO: Get the File properly without using substring
 			LocalSubModuleSearcher subModuleSearcher = LocalSubModuleSearcher.getInstance();
@@ -100,7 +108,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		} catch (IOException | XmlPullParserException e) {
 			e.printStackTrace();
 		}
-		
+
 	}
 
 	private void initSnippets() {
@@ -160,7 +168,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		item.setInsertTextFormat(InsertTextFormat.PlainText);
 		return item;
 	}
-	
+
 	private CompletionItem getParentVersion(DOMDocument doc, Range range) {
 		String label = ParentSearcher.getInstance().getParentVersion();
 		CompletionItem item = new CompletionItem();
@@ -173,7 +181,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		item.setInsertTextFormat(InsertTextFormat.PlainText);
 		return item;
 	}
-	
+
 	private CompletionItem getParentArtifactId(DOMDocument doc, Range range) {
 		String label = ParentSearcher.getInstance().getParentArtifactId();
 		CompletionItem item = new CompletionItem();

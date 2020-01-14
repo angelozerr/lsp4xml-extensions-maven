@@ -1,3 +1,11 @@
+/*******************************************************************************
+ * Copyright (c) 2019-2020 Red Hat Inc. and others.
+ * This program and the accompanying materials are made
+ * available under the terms of the Eclipse Public License 2.0
+ * which is available at https://www.eclipse.org/legal/epl-2.0/
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *******************************************************************************/
 package org.eclipse.lsp4xml.extensions.maven.searcher;
 
 import java.io.File;
@@ -19,7 +27,7 @@ public class LocalSubModuleSearcher {
 	private LocalSubModuleSearcher() {
 
 	}
-	
+
 	public static LocalSubModuleSearcher getInstance() {
 		return INSTANCE;
 	}
@@ -29,7 +37,7 @@ public class LocalSubModuleSearcher {
 	}
 
 	public List<String> getSubModules() {
-		return (List<String>) model.getModules();
+		return model.getModules();
 	}
 
 }
