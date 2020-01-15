@@ -20,6 +20,7 @@ import java.util.concurrent.ExecutionException;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionList;
 import org.eclipse.lsp4j.CompletionParams;
+import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
@@ -51,12 +52,11 @@ public class ExtensionTests {
 		assertTrue(completion.getRight().getItems().stream().map(CompletionItem::getLabel).anyMatch("runtime"::equals));
 	}
 
-	@Test public void testUnknownVersionWarning() throws IOException, InterruptedException, ExecutionException {
-		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-with-module-error.xml");
+	@Test public void testMissingArtifactIdError() throws IOException, InterruptedException, ExecutionException {
+		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-without-artifactId.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
 		connection.languageServer.getTextDocumentService().didOpen(params);
-		// Currently not working as the test pom file doesn't trigger a diagnostic
-		//assertTrue(connection.waitForDiagnostics(diagnostics -> diagnostics.stream().map(Diagnostic::getMessage).anyMatch(message -> message.toLowerCase().contains("version")), 200000));
+		assertTrue(connection.waitForDiagnostics(diagnostics -> diagnostics.stream().map(Diagnostic::getMessage).anyMatch(message -> message.contains("artifactId")), 2000));
 	}
 
 	TextDocumentItem createTextDocumentItem(String resourcePath) throws IOException {

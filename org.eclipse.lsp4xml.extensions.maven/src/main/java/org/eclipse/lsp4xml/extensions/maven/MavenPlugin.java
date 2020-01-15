@@ -10,6 +10,15 @@
  */
 package org.eclipse.lsp4xml.extensions.maven;
 
+import org.codehaus.plexus.ContainerConfiguration;
+import org.codehaus.plexus.DefaultContainerConfiguration;
+import org.codehaus.plexus.DefaultPlexusContainer;
+import org.codehaus.plexus.PlexusConstants;
+import org.codehaus.plexus.PlexusContainer;
+import org.codehaus.plexus.PlexusContainerException;
+import org.codehaus.plexus.classworlds.ClassWorld;
+import org.codehaus.plexus.classworlds.realm.ClassRealm;
+import org.codehaus.plexus.classworlds.realm.NoSuchRealmException;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4xml.dom.DOMDocument;
 import org.eclipse.lsp4xml.services.extensions.ICompletionParticipant;
@@ -26,28 +35,67 @@ public class MavenPlugin implements IXMLExtension {
 
 	private static final String POM_XML = "pom.xml";
 
+	private static final String MAVEN_XMLLS_EXTENSION_REALM_ID = MavenPlugin.class.getName();
+
 	private final ICompletionParticipant completionParticipant;
 	private final IDiagnosticsParticipant diagnosticParticipant;
+	private PlexusContainer container;
+
 	public MavenPlugin() {
 		completionParticipant = new MavenCompletionParticipant();
-		diagnosticParticipant = new MavenDiagnosticParticipant();
+		diagnosticParticipant = new MavenDiagnosticParticipant(() -> this.container);
 	}
 
-	@Override
-	public void doSave(ISaveContext context) {
+	@Override public void doSave(ISaveContext context) {
 
 	}
 
-	@Override
-	public void start(InitializeParams params, XMLExtensionsRegistry registry) {
+	@Override public void start(InitializeParams params, XMLExtensionsRegistry registry) {
+		try {
+			container = newPlexusContainer();
+		} catch (PlexusContainerException e) {
+			e.printStackTrace();
+		}
 		registry.registerCompletionParticipant(completionParticipant);
 		registry.registerDiagnosticsParticipant(diagnosticParticipant);
 	}
 
-	@Override
-	public void stop(XMLExtensionsRegistry registry) {
+	/* Copied from m2e */
+	private static DefaultPlexusContainer newPlexusContainer() throws PlexusContainerException {
+		final ClassWorld classWorld = new ClassWorld(MAVEN_XMLLS_EXTENSION_REALM_ID, ClassWorld.class.getClassLoader());
+		final ClassRealm realm;
+		try {
+			realm = classWorld.getRealm(MAVEN_XMLLS_EXTENSION_REALM_ID);
+		} catch (NoSuchRealmException e) {
+			throw new PlexusContainerException("Could not lookup required class realm", e);
+		}
+		final ContainerConfiguration mavenCoreCC = new DefaultContainerConfiguration() //
+				.setClassWorld(classWorld) //
+				.setRealm(realm) //
+				.setClassPathScanning(PlexusConstants.SCANNING_INDEX) //
+				.setAutoWiring(true) //
+				.setName("mavenCore"); //$NON-NLS-1$
+
+		// final Module logginModule = new AbstractModule() {
+		// protected void configure() {
+		// bind(ILoggerFactory.class).toInstance(LoggerFactory.getILoggerFactory());
+		// }
+		// };
+		// final Module coreExportsModule = new AbstractModule() {
+		// protected void configure() {
+		// ClassRealm realm = mavenCoreCC.getRealm();
+		// CoreExtensionEntry entry = CoreExtensionEntry.discoverFrom(realm);
+		// CoreExports exports = new CoreExports(entry);
+		// bind(CoreExports.class).toInstance(exports);
+		// }
+		// };
+		return new DefaultPlexusContainer(mavenCoreCC);
+	}
+
+	@Override public void stop(XMLExtensionsRegistry registry) {
 		registry.unregisterCompletionParticipant(completionParticipant);
 		registry.unregisterDiagnosticsParticipant(diagnosticParticipant);
+		container = null;
 	}
 
 	public static boolean match(DOMDocument document) {
