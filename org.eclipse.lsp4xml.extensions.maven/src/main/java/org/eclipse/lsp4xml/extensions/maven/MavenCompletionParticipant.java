@@ -21,6 +21,9 @@ import org.apache.maven.artifact.versioning.ArtifactVersion;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.repository.RepositorySystem;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
+import org.eclipse.aether.util.version.GenericVersionScheme;
+import org.eclipse.aether.version.InvalidVersionSpecificationException;
+import org.eclipse.aether.version.Version;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
 import org.eclipse.lsp4j.InsertTextFormat;
@@ -35,7 +38,6 @@ import org.eclipse.lsp4xml.dom.DOMElement;
 import org.eclipse.lsp4xml.dom.DOMNode;
 import org.eclipse.lsp4xml.dom.LineIndentInfo;
 import org.eclipse.lsp4xml.extensions.maven.searcher.ArtifactSearcherManager;
-import org.eclipse.lsp4xml.extensions.maven.searcher.LocalRepositorySearcher;
 import org.eclipse.lsp4xml.extensions.maven.searcher.LocalSubModuleSearcher;
 import org.eclipse.lsp4xml.extensions.maven.searcher.ParentSearcher;
 import org.eclipse.lsp4xml.services.extensions.CompletionParticipantAdapter;
@@ -73,6 +75,9 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			}
 		}
 		switch (parent.getLocalName()) {
+		case "version":
+			collectVersionCompletion(request, response);
+			break;
 		case "scope":
 			collectSimpleCompletionItems(Arrays.asList(DependencyScope.values()), DependencyScope::getName, DependencyScope::getDescription, request, response);
 			break;
@@ -215,6 +220,53 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			response.addCompletionItem(item, false);
 		}
 	}
+
+	private void collectLatestVersionCompletion(ICompletionRequest request, ICompletionResponse response) {
+		DOMElement node = request.getParentElement();
+		DOMDocument doc = request.getXMLDocument();
+
+		Range range = XMLPositionUtility.createRange(node.getStartTagCloseOffset() + 1, node.getEndTagOpenOffset(),
+				doc);
+		ArtifactVersionSearcher2 artifactVersionSearcher = ArtifactVersionSearcher2.getInstance();
+		artifactVersionSearcher.Initialize(cache, doc);
+		String label = artifactVersionSearcher.getHighestArtifactVersion(node);
+		CompletionItem item = new CompletionItem();
+		item.setLabel(label);
+		String insertText = label;
+		item.setKind(CompletionItemKind.Property);
+		item.setDocumentation(Either.forLeft("Latest available artifact version"));
+		item.setFilterText(insertText);
+		item.setTextEdit(new TextEdit(range, insertText));
+		item.setInsertTextFormat(InsertTextFormat.PlainText);
+		response.addCompletionItem(item);
+	}
+	private void collectVersionCompletion(ICompletionRequest request, ICompletionResponse response) {
+		DOMElement node = request.getParentElement();
+		DOMDocument doc = request.getXMLDocument();
+
+		Range range = XMLPositionUtility.createRange(node.getStartTagCloseOffset() + 1, node.getEndTagOpenOffset(),
+				doc);
+		ArtifactVersionSearcher artifactVersionSearcher = ArtifactVersionSearcher.getInstance();
+		artifactVersionSearcher.initialize(cache, doc);
+		try {
+			for (String version : artifactVersionSearcher.getArtifactVersionsNew(node)) {
+				String label = version;
+				CompletionItem item = new CompletionItem();
+				item.setLabel(label);
+				String insertText = label;
+				item.setKind(CompletionItemKind.Property);
+				item.setDocumentation(Either.forLeft("Artifact Version"));
+				item.setFilterText(insertText);
+				item.setTextEdit(new TextEdit(range, insertText));
+				item.setInsertTextFormat(InsertTextFormat.PlainText);
+				response.addCompletionItem(item);
+			}
+		} catch (InvalidVersionSpecificationException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+
 
 	private void collectSubModuleCompletion(ICompletionRequest request, ICompletionResponse response) {
 		DOMElement node = request.getParentElement();

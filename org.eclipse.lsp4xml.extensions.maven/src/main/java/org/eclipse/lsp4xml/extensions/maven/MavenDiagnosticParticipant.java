@@ -34,6 +34,7 @@ import org.eclipse.lsp4xml.services.extensions.diagnostics.IDiagnosticsParticipa
 public class MavenDiagnosticParticipant implements IDiagnosticsParticipant {
 
 	private MavenProjectCache projectCache;
+	private RepositoryCache repositoryCache = RepositoryCache.getInstance();
 
 	public MavenDiagnosticParticipant(MavenProjectCache projectCache) {
 		this.projectCache = projectCache;
@@ -41,6 +42,8 @@ public class MavenDiagnosticParticipant implements IDiagnosticsParticipant {
 
 	@Override
 	public void doDiagnostics(DOMDocument xmlDocument, List<Diagnostic> diagnostics, CancelChecker monitor) {
+		// TODO: This shouldn't be called on each doDiagnostics, only call when project cache is modified
+		repositoryCache.update(xmlDocument);
 		projectCache.getProblemsFor(xmlDocument).stream().map(this::toDiagnostic).forEach(diagnostics::add);
 
 		DOMElement documentElement = xmlDocument.getDocumentElement();
