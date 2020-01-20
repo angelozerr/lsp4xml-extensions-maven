@@ -10,8 +10,10 @@ package org.eclipse.lsp4xml.extensions.maven;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Map.Entry;
 import java.util.Set;
 
+import org.apache.maven.project.MavenProject;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
@@ -34,6 +36,11 @@ import org.eclipse.lsp4xml.utils.XMLPositionUtility;
 public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 
 	private boolean snippetsLoaded;
+	private MavenProjectCache cache;
+
+	public MavenCompletionParticipant(MavenProjectCache cache) {
+		this.cache = cache;
+	}
 
 	@Override
 	public void onXMLContent(ICompletionRequest request, ICompletionResponse response) throws Exception {
@@ -79,6 +86,33 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 						}
 						return parent.getLocalName().equals(context.getValue());
 					}).forEach(completionItem -> response.addCompletionItem(completionItem));
+		}
+		if (request.getNode().isText()) {
+			completeProperties(request, response);
+		}
+	}
+
+	private void completeProperties(ICompletionRequest request, ICompletionResponse response) {
+		String documentText = request.getXMLDocument().getText();
+		int initialPropertyOffset = request.getOffset();
+		for (int i = request.getOffset() - 1; i < request.getNode().getStart(); i--) {
+			char currentChar = documentText.charAt(i);
+			if (currentChar == '}') {
+				// properties area ended, return all properties
+				break;
+			} else if (currentChar == '$') {
+				initialPropertyOffset = i;
+				break;
+			}
+		}
+		MavenProject project = cache.getLastSuccessfulMavenProject(request.getXMLDocument());
+		for (Entry<Object, Object> property : project.getProperties().entrySet()) {
+			CompletionItem item = new CompletionItem();
+			item.setLabel("${" + property.getKey() + '}');
+			item.setDocumentation("Default Value: " + property.getValue());
+			// TODO: set a proper text edit so we can complete prefix (from initial property offset)
+			item.setInsertText(item.getLabel());
+			response.addCompletionItem(item, false);
 		}
 	}
 

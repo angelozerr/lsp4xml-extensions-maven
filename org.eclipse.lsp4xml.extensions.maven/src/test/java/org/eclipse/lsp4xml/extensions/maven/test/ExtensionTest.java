@@ -28,6 +28,7 @@ import org.eclipse.lsp4j.TextDocumentItem;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 public class ExtensionTest {
@@ -50,6 +51,29 @@ public class ExtensionTest {
 		connection.languageServer.getTextDocumentService().didOpen(params);
 		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(12, 10))).get();
 		assertTrue(completion.getRight().getItems().stream().map(CompletionItem::getLabel).anyMatch("runtime"::equals));
+	}
+
+	/*
+	 * Error is currently
+	 * java.lang.NullPointerException
+	at org.eclipse.aether.internal.impl.DefaultRemoteRepositoryManager.aggregateRepositories(DefaultRemoteRepositoryManager.java:137)
+	at org.apache.maven.project.ProjectModelResolver.addRepository(ProjectModelResolver.java:150)
+	at org.apache.maven.model.building.DefaultModelBuilder.configureResolver(DefaultModelBuilder.java:667)
+	at org.apache.maven.model.building.DefaultModelBuilder.build(DefaultModelBuilder.java:411)
+	at org.apache.maven.project.DefaultProjectBuilder.build(DefaultProjectBuilder.java:173)
+	at org.apache.maven.project.DefaultProjectBuilder.build(DefaultProjectBuilder.java:124)
+	at org.eclipse.lsp4xml.extensions.maven.MavenProjectCache.parse(MavenProjectCache.java:90)
+		Because the ProjectBuildRequest missed to set a lot of important fields (localRepositoryArtifact, repositorySession...)
+	 */
+	@Ignore(value="This is currently not working")
+	@Test public void testPropertyCompletion() throws IOException, InterruptedException, ExecutionException {
+		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-with-properties.xml");
+		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+		connection.languageServer.getTextDocumentService().didOpen(params);
+		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(10, 15))).get();
+		List<CompletionItem> items = completion.getRight().getItems();
+		assertTrue(items.stream().map(CompletionItem::getLabel).anyMatch(label -> label.contains("project.build.directory")));
+		assertTrue(items.stream().map(CompletionItem::getLabel).anyMatch(label -> label.contains("myProperty")));
 	}
 
 	@Test public void testMissingArtifactIdError() throws IOException, InterruptedException, ExecutionException {
