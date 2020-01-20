@@ -63,7 +63,7 @@ public class MavenPlugin implements IXMLExtension {
 	}
 
 	/* Copied from m2e */
-	private static DefaultPlexusContainer newPlexusContainer() throws PlexusContainerException {
+	public static DefaultPlexusContainer newPlexusContainer() throws PlexusContainerException {
 		final ClassWorld classWorld = new ClassWorld(MAVEN_XMLLS_EXTENSION_REALM_ID, ClassWorld.class.getClassLoader());
 		final ClassRealm realm;
 		try {
