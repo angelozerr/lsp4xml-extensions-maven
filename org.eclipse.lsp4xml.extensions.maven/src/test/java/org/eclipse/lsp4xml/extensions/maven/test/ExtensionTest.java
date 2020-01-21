@@ -28,9 +28,10 @@ import org.eclipse.lsp4j.TextDocumentItem;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
-public class ExtensionTests {
+public class ExtensionTest {
 
 	private ClientServerConnection connection;
 
@@ -50,6 +51,17 @@ public class ExtensionTests {
 		connection.languageServer.getTextDocumentService().didOpen(params);
 		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(12, 10))).get();
 		assertTrue(completion.getRight().getItems().stream().map(CompletionItem::getLabel).anyMatch("runtime"::equals));
+	}
+
+	@Test public void testPropertyCompletion() throws IOException, InterruptedException, ExecutionException {
+		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-with-properties.xml");
+		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+		connection.languageServer.getTextDocumentService().didOpen(params);
+		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(10, 15))).get();
+		List<CompletionItem> items = completion.getRight().getItems();
+		assertTrue(items.stream().map(CompletionItem::getLabel).anyMatch(label -> label.contains("myProperty")));
+		// TODO standard properties aren't supported yet
+		//assertTrue(items.stream().map(CompletionItem::getLabel).anyMatch(label -> label.contains("project.build.directory")));
 	}
 
 	@Test public void testMissingArtifactIdError() throws IOException, InterruptedException, ExecutionException {

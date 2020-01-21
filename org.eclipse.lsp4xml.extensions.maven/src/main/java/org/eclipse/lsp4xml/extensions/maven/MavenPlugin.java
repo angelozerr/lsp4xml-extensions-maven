@@ -37,13 +37,12 @@ public class MavenPlugin implements IXMLExtension {
 
 	private static final String MAVEN_XMLLS_EXTENSION_REALM_ID = MavenPlugin.class.getName();
 
-	private final ICompletionParticipant completionParticipant;
-	private final IDiagnosticsParticipant diagnosticParticipant;
+	private ICompletionParticipant completionParticipant;
+	private IDiagnosticsParticipant diagnosticParticipant;
 	private PlexusContainer container;
+	private MavenProjectCache cache;
 
 	public MavenPlugin() {
-		completionParticipant = new MavenCompletionParticipant();
-		diagnosticParticipant = new MavenDiagnosticParticipant(() -> this.container);
 	}
 
 	@Override public void doSave(ISaveContext context) {
@@ -53,15 +52,18 @@ public class MavenPlugin implements IXMLExtension {
 	@Override public void start(InitializeParams params, XMLExtensionsRegistry registry) {
 		try {
 			container = newPlexusContainer();
+			cache = new MavenProjectCache(container);
 		} catch (PlexusContainerException e) {
 			e.printStackTrace();
 		}
+		completionParticipant = new MavenCompletionParticipant(cache);
 		registry.registerCompletionParticipant(completionParticipant);
+		diagnosticParticipant = new MavenDiagnosticParticipant(cache);
 		registry.registerDiagnosticsParticipant(diagnosticParticipant);
 	}
 
 	/* Copied from m2e */
-	private static DefaultPlexusContainer newPlexusContainer() throws PlexusContainerException {
+	public static DefaultPlexusContainer newPlexusContainer() throws PlexusContainerException {
 		final ClassWorld classWorld = new ClassWorld(MAVEN_XMLLS_EXTENSION_REALM_ID, ClassWorld.class.getClassLoader());
 		final ClassRealm realm;
 		try {
@@ -95,6 +97,7 @@ public class MavenPlugin implements IXMLExtension {
 	@Override public void stop(XMLExtensionsRegistry registry) {
 		registry.unregisterCompletionParticipant(completionParticipant);
 		registry.unregisterDiagnosticsParticipant(diagnosticParticipant);
+		cache = null;
 		container = null;
 	}
 
