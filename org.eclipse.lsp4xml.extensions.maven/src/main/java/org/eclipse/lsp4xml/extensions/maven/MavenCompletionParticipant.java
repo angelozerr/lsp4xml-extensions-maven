@@ -21,6 +21,7 @@ import org.eclipse.lsp4j.InsertTextFormat;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.TextEdit;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
+import org.eclipse.lsp4xml.commons.BadLocationException;
 import org.eclipse.lsp4xml.commons.TextDocument;
 import org.eclipse.lsp4xml.commons.snippets.SnippetRegistry;
 import org.eclipse.lsp4xml.dom.DOMDocument;
@@ -93,9 +94,10 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 	}
 
 	private void completeProperties(ICompletionRequest request, ICompletionResponse response) {
-		String documentText = request.getXMLDocument().getText();
+		DOMDocument xmlDocument = request.getXMLDocument();
+		String documentText = xmlDocument.getText();
 		int initialPropertyOffset = request.getOffset();
-		for (int i = request.getOffset() - 1; i < request.getNode().getStart(); i--) {
+		for (int i = request.getOffset() - 1; i >= request.getNode().getStart(); i--) {
 			char currentChar = documentText.charAt(i);
 			if (currentChar == '}') {
 				// properties area ended, return all properties
@@ -106,14 +108,24 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			}
 		}
 		MavenProject project = cache.getLastSuccessfulMavenProject(request.getXMLDocument());
-		for (Entry<Object, Object> property : project.getProperties().entrySet()) {
-			CompletionItem item = new CompletionItem();
-			item.setLabel("${" + property.getKey() + '}');
-			item.setDocumentation("Default Value: " + property.getValue());
-			// TODO: set a proper text edit so we can complete prefix (from initial property offset)
-			item.setInsertText(item.getLabel());
-			response.addCompletionItem(item, false);
+		if (project != null && project.getProperties() != null) {
+			for (Entry<Object, Object> property : project.getProperties().entrySet()) {
+				CompletionItem item = new CompletionItem();
+				item.setLabel("${" + property.getKey() + '}');
+				item.setDocumentation("Default Value: " + property.getValue());
+				try {
+					TextEdit textEdit = new TextEdit();
+					textEdit.setNewText(item.getLabel());
+					textEdit.setRange(new Range(xmlDocument.positionAt(initialPropertyOffset), xmlDocument.positionAt(request.getOffset())));
+					item.setTextEdit(textEdit);
+				} catch (BadLocationException e) {
+					e.printStackTrace();
+					item.setInsertText(item.getLabel());
+				}
+				response.addCompletionItem(item, false);
+			}
 		}
+		// TODO add static properties
 	}
 
 	private void collectSubModuleCompletion(ICompletionRequest request, ICompletionResponse response) {
