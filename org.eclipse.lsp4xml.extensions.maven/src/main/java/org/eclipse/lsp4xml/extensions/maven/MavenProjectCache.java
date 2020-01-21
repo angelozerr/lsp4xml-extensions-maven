@@ -12,7 +12,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -95,7 +95,7 @@ public class MavenProjectCache {
 			}
 			File file = new File(uri);
 			workingCopy = File.createTempFile("workingCopy", '.' + file.getName(), file.getParentFile());
-			Files.copy(file.toPath(), workingCopy.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			Files.write(workingCopy.toPath(), document.getText().getBytes(), StandardOpenOption.CREATE);
 			ProjectBuildingRequest request = new DefaultProjectBuildingRequest();
 			request.setLocalRepository(mavenRequest.getLocalRepository());
 			request.setRepositorySession(repositorySystemSession);
