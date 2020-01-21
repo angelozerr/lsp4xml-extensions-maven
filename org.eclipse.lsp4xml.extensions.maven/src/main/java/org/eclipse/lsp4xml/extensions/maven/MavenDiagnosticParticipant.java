@@ -104,7 +104,7 @@ public class MavenDiagnosticParticipant implements IDiagnosticsParticipant {
 		Diagnostic diagnostic = new Diagnostic();
 		diagnostic.setMessage(problem.getMessage());
 		diagnostic.setSeverity(toDiagnosticSeverity(problem.getSeverity()));
-		diagnostic.setRange(new Range(new Position(problem.getLineNumber(), problem.getColumnNumber()), new Position(problem.getLineNumber(), problem.getColumnNumber() + 1)));
+		diagnostic.setRange(new Range(new Position(problem.getLineNumber() - 1, problem.getColumnNumber() - 1), new Position(problem.getLineNumber() - 1, problem.getColumnNumber())));
 		return diagnostic;
 	}
 
@@ -119,12 +119,4 @@ public class MavenDiagnosticParticipant implements IDiagnosticsParticipant {
 		return DiagnosticSeverity.Information;
 	}
 
-
-	private Diagnostic toDiagnostic(Exception e) {
-		Diagnostic diagnostic = new Diagnostic();
-		diagnostic.setMessage(e.getMessage());
-		diagnostic.setSeverity(DiagnosticSeverity.Error);
-		diagnostic.setRange(new Range(new Position(0, 0), new Position(0, 0)));
-		return diagnostic;
-	}
 }
