@@ -68,7 +68,7 @@ public class ExtensionTest {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-without-artifactId.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
 		connection.languageServer.getTextDocumentService().didOpen(params);
-		assertTrue(connection.waitForDiagnostics(diagnostics -> diagnostics.stream().map(Diagnostic::getMessage).anyMatch(message -> message.contains("artifactId")), 2000));
+		assertTrue(connection.waitForDiagnostics(diagnostics -> diagnostics.stream().map(Diagnostic::getMessage).anyMatch(message -> message.contains("artifactId")), 5000));
 	}
 
 	TextDocumentItem createTextDocumentItem(String resourcePath) throws IOException {

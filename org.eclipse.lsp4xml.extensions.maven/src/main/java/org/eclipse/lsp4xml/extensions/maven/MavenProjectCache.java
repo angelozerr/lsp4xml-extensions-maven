@@ -19,6 +19,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.maven.artifact.InvalidRepositoryException;
+import org.apache.maven.execution.DefaultMavenExecutionRequest;
+import org.apache.maven.execution.MavenExecutionRequest;
+import org.apache.maven.internal.aether.DefaultRepositorySystemSessionFactory;
 import org.apache.maven.model.building.DefaultModelProblem;
 import org.apache.maven.model.building.ModelBuildingException;
 import org.apache.maven.model.building.ModelProblem;
@@ -31,9 +34,9 @@ import org.apache.maven.project.ProjectBuildingException;
 import org.apache.maven.project.ProjectBuildingRequest;
 import org.apache.maven.project.ProjectBuildingResult;
 import org.apache.maven.repository.RepositorySystem;
-import org.apache.maven.repository.legacy.LegacyRepositorySystem;
 import org.codehaus.plexus.PlexusContainer;
 import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
+import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.lsp4xml.dom.DOMDocument;
 
 public class MavenProjectCache {
@@ -42,6 +45,10 @@ public class MavenProjectCache {
 	private final Map<URI, MavenProject> projectCache;
 	private final Map<URI, Collection<ModelProblem>> problemCache;
 	private final PlexusContainer plexusContainer;
+
+	private MavenExecutionRequest mavenRequest;
+	private DefaultRepositorySystemSession repositorySystemSession;
+	private ProjectBuilder projectBuilder;
 
 	public MavenProjectCache(PlexusContainer container) {
 		this.plexusContainer = container;
@@ -82,16 +89,16 @@ public class MavenProjectCache {
 		URI uri = URI.create(document.getDocumentURI());
 		File workingCopy = null;
 		Collection<ModelProblem> problems = new ArrayList<ModelProblem>();
-		MavenProject project = null;
 		try {
-			ProjectBuilder projectBuilder = plexusContainer.lookup(ProjectBuilder.class);
+			if (mavenRequest == null) {
+				initializeMavenBuildState();
+			}
 			File file = new File(uri);
 			workingCopy = File.createTempFile("workingCopy", '.' + file.getName(), file.getParentFile());
 			Files.copy(file.toPath(), workingCopy.toPath(), StandardCopyOption.REPLACE_EXISTING);
 			ProjectBuildingRequest request = new DefaultProjectBuildingRequest();
-			//request.setLocalRepository(localRepository)
-			RepositorySystem repositorySystem = plexusContainer.lookup(RepositorySystem.class);
-			request.setLocalRepository(repositorySystem.createDefaultLocalRepository());
+			request.setLocalRepository(mavenRequest.getLocalRepository());
+			request.setRepositorySession(repositorySystemSession);
 			ProjectBuildingResult buildResult = projectBuilder.build(workingCopy, request);
 			problems.addAll(buildResult.getProblems());
 			if (buildResult.getProject() != null) {
@@ -118,6 +125,16 @@ public class MavenProjectCache {
 
 		lastCheckedVersion.put(uri, document.getTextDocument().getVersion());
 		problemCache.put(uri, problems);
+	}
+
+	private void initializeMavenBuildState() throws ComponentLookupException, InvalidRepositoryException {
+		projectBuilder = plexusContainer.lookup(ProjectBuilder.class);
+		mavenRequest = new DefaultMavenExecutionRequest();
+		mavenRequest.setLocalRepositoryPath(RepositorySystem.defaultUserLocalRepository);
+		RepositorySystem repositorySystem = plexusContainer.lookup(RepositorySystem.class);
+		mavenRequest.setLocalRepository(repositorySystem.createDefaultLocalRepository());
+		DefaultRepositorySystemSessionFactory repositorySessionFactory = plexusContainer.lookup(DefaultRepositorySystemSessionFactory.class);
+		repositorySystemSession = repositorySessionFactory.newRepositorySession(mavenRequest);
 	}
 
 }
