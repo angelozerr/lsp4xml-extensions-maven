@@ -65,8 +65,7 @@ public class ExtensionTest {
 		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(10, 15))).get();
 		List<CompletionItem> items = completion.getRight().getItems();
 		assertTrue(items.stream().map(CompletionItem::getLabel).anyMatch(label -> label.contains("myProperty")));
-		// TODO standard properties aren't supported yet
-		//assertTrue(items.stream().map(CompletionItem::getLabel).anyMatch(label -> label.contains("project.build.directory")));
+		assertTrue(items.stream().map(CompletionItem::getLabel).anyMatch(label -> label.contains("project.build.directory")));
 	}
 
 	@Test public void testMissingArtifactIdError() throws IOException, InterruptedException, ExecutionException {
@@ -78,7 +77,7 @@ public class ExtensionTest {
 		didChange.setTextDocument(new VersionedTextDocumentIdentifier(textDocumentItem.getUri(), 2));
 		didChange.setContentChanges(Collections.singletonList(new TextDocumentContentChangeEvent(new Range(new Position(5, 28), new Position(5, 28)), 0, "<artifactId>a</artifactId>")));
 		connection.languageServer.getTextDocumentService().didChange(didChange);
-		assertTrue(connection.waitForDiagnostics(Collection<Diagnostic>::isEmpty,  500000));
+		assertTrue(connection.waitForDiagnostics(Collection<Diagnostic>::isEmpty,  10000));
 	}
 
 	TextDocumentItem createTextDocumentItem(String resourcePath) throws IOException {

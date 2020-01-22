@@ -10,8 +10,12 @@ package org.eclipse.lsp4xml.extensions.maven;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Properties;
 import java.util.Set;
+import java.util.function.Supplier;
 
 import org.apache.maven.project.MavenProject;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
@@ -107,25 +111,38 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 				break;
 			}
 		}
+		Map<String, String> allProps = new HashMap<>();
 		MavenProject project = cache.getLastSuccessfulMavenProject(request.getXMLDocument());
 		if (project != null && project.getProperties() != null) {
-			for (Entry<Object, Object> property : project.getProperties().entrySet()) {
-				CompletionItem item = new CompletionItem();
-				item.setLabel("${" + property.getKey() + '}');
-				item.setDocumentation("Default Value: " + property.getValue());
-				try {
-					TextEdit textEdit = new TextEdit();
-					textEdit.setNewText(item.getLabel());
-					textEdit.setRange(new Range(xmlDocument.positionAt(initialPropertyOffset), xmlDocument.positionAt(request.getOffset())));
-					item.setTextEdit(textEdit);
-				} catch (BadLocationException e) {
-					e.printStackTrace();
-					item.setInsertText(item.getLabel());
-				}
-				response.addCompletionItem(item, false);
+			for (Entry<Object, Object> prop : project.getProperties().entrySet()) {
+				allProps.put((String)prop.getKey(), (String)prop.getValue());
 			}
 		}
-		// TODO add static properties
+		allProps.put("basedir", project == null ? "unknown" : project.getBasedir().toString());
+		allProps.put("project.basedir", project == null ? "unknown" : project.getBasedir().toString());
+		allProps.put("project.version", project == null ? "unknown" : project.getVersion());
+		allProps.put("project.groupId", project == null ? "unknown" : project.getGroupId());
+		allProps.put("project.artifactId", project == null ? "unknown" : project.getArtifactId());
+		allProps.put("project.name", project == null ? "unknown" : project.getName());
+		allProps.put("project.build.directory", project == null ? "unknown" : project.getBuild().getDirectory());
+		allProps.put("project.build.outputDirectory", project == null ? "unknown" : project.getBuild().getOutputDirectory());
+
+		for (Entry<String, String> property : allProps.entrySet()) {
+			CompletionItem item = new CompletionItem();
+			item.setLabel("${" + property.getKey() + '}');
+			item.setDocumentation("Default Value: " + (property.getValue() != null ? property.getValue() : "unknown"));
+			try {
+				TextEdit textEdit = new TextEdit();
+				textEdit.setNewText(item.getLabel());
+				Range range = new Range(xmlDocument.positionAt(initialPropertyOffset), xmlDocument.positionAt(request.getOffset()));
+				textEdit.setRange(range);
+				item.setTextEdit(textEdit);
+			} catch (BadLocationException e) {
+				e.printStackTrace();
+				item.setInsertText(item.getLabel());
+			}
+			response.addCompletionItem(item, false);
+		}
 	}
 
 	private void collectSubModuleCompletion(ICompletionRequest request, ICompletionResponse response) {
