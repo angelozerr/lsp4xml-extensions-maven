@@ -1,5 +1,8 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 	<modelVersion>4.0.0</modelVersion>
+
 	<groupId>org.lsp4xml</groupId>
 	<artifactId>maven-xmlls-extension</artifactId>
 	<version>0.0.2-SNAPSHOT</version>
@@ -10,19 +13,19 @@
 			<url>https://www.eclipse.org/org/documents/epl-2.0/EPL-2.0.html</url>
 		</license>
 	</licenses>
-	
+
 	<properties>
 		<maven.compiler.source>1.8</maven.compiler.source>
 		<maven.compiler.target>1.8</maven.compiler.target>
 	</properties>
-	
-	<dependencies>
+
+	<dependencies>		
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
 			<version>4.13</version>
 			<scope>test</scope>
-		</dependency>
+		</dependency> 
 		<dependency>
 			<groupId>org.lsp4xml</groupId>
 			<artifactId>org.eclipse.lsp4xml</artifactId>
@@ -64,16 +67,6 @@
 			<version>1.1.0</version>
 		</dependency>
 		<dependency>
-			<groupId>org.eclipse.aether</groupId>
-			<artifactId>aether-transport-http</artifactId>
-			<version>1.1.0</version>
-		</dependency>
-		<dependency>
-			<groupId>org.eclipse.aether</groupId>
-			<artifactId>aether-transport-file</artifactId>
-			<version>1.1.0</version>
-		</dependency>
-		<dependency>
 			<groupId>org.apache.maven.indexer</groupId>
 			<artifactId>indexer-core</artifactId>
 			<version>6.0.0</version>
@@ -89,7 +82,7 @@
 			<version>4.5.11</version>
 		</dependency>
 	</dependencies>
-	
+
 	<build>
 		<plugins>
 			<plugin>
@@ -98,7 +91,7 @@
 			</plugin>
 		</plugins>
 	</build>
-	
+
 	<repositories>
 		<repository>
 			<id>lsp4xml-releases</id>
@@ -111,7 +104,7 @@
 			</releases>
 		</repository>
 	</repositories>
-	
+
 	<distributionManagement>
 		<snapshotRepository>
 			<id>github</id>

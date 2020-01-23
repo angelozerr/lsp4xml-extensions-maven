@@ -38,6 +38,7 @@ import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 public class ExtensionTest {
@@ -60,6 +61,22 @@ public class ExtensionTest {
 		connection.languageServer.getTextDocumentService().didOpen(params);
 		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(12, 10))).get();
 		assertTrue(completion.getRight().getItems().stream().map(CompletionItem::getLabel).anyMatch("runtime"::equals));
+	}
+
+	@Test public void testVersionCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-version-complete.xml");
+		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+		connection.languageServer.getTextDocumentService().didOpen(params);
+		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(13, 13))).get();
+		assertTrue(completion.getRight().getItems().stream().map(CompletionItem::getLabel).anyMatch(label -> label.contains("3.6.3")));
+	}
+
+	@Test public void testVersionCompletionNoResults() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-version-complete-no-results.xml");
+		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+		connection.languageServer.getTextDocumentService().didOpen(params);
+		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(13, 13))).get();
+		assertTrue(completion.getRight().getItems().stream().map(CompletionItem::getLabel).anyMatch(label -> label.contains("No artifact versions found.")));
 	}
 
 	@Test public void testPropertyCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {

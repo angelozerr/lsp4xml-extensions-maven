@@ -8,8 +8,6 @@
  *******************************************************************************/
 package org.eclipse.lsp4xml.extensions.maven;
 
-import java.io.File;
-import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
@@ -20,7 +18,6 @@ import javax.annotation.Nonnull;
 
 import org.apache.maven.model.building.ModelProblem;
 import org.apache.maven.model.building.ModelProblem.Severity;
-import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DiagnosticSeverity;
 import org.eclipse.lsp4j.Position;
@@ -34,7 +31,6 @@ import org.eclipse.lsp4xml.services.extensions.diagnostics.IDiagnosticsParticipa
 public class MavenDiagnosticParticipant implements IDiagnosticsParticipant {
 
 	private MavenProjectCache projectCache;
-	private RepositoryCache repositoryCache = RepositoryCache.getInstance();
 
 	public MavenDiagnosticParticipant(MavenProjectCache projectCache) {
 		this.projectCache = projectCache;
@@ -42,10 +38,7 @@ public class MavenDiagnosticParticipant implements IDiagnosticsParticipant {
 
 	@Override
 	public void doDiagnostics(DOMDocument xmlDocument, List<Diagnostic> diagnostics, CancelChecker monitor) {
-		// TODO: This shouldn't be called on each doDiagnostics, only call when project cache is modified
-		repositoryCache.update(xmlDocument);
 		projectCache.getProblemsFor(xmlDocument).stream().map(this::toDiagnostic).forEach(diagnostics::add);
-
 		DOMElement documentElement = xmlDocument.getDocumentElement();
 		HashMap<String, Function<DiagnosticRequest, Diagnostic>> tagDiagnostics = configureDiagnosticFunctions(
 				xmlDocument);
@@ -82,24 +75,24 @@ public class MavenDiagnosticParticipant implements IDiagnosticsParticipant {
 
 	private HashMap<String, Function<DiagnosticRequest, Diagnostic>> configureDiagnosticFunctions(
 			DOMDocument xmlDocument) {
-		SubModuleValidator subModuleValidator = new SubModuleValidator();
-		try {
-			subModuleValidator.setPomFile(new File(xmlDocument.getDocumentURI().substring(5)));
-		} catch (IOException | XmlPullParserException e) {
-			// TODO: Use plug-in error logger
-			e.printStackTrace();
-		}
-		Function<DiagnosticRequest, Diagnostic> versionFunc = VersionValidator::validateVersion;
-		Function<DiagnosticRequest, Diagnostic> submoduleExistenceFunc = subModuleValidator::validateSubModuleExistence;
+//		SubModuleValidator subModuleValidator= new SubModuleValidator();
+//		try {
+//			subModuleValidator.setPomFile(new File(xmlDocument.getDocumentURI().substring(5)));
+//		} catch (IOException | XmlPullParserException e) {
+//			// TODO: Use plug-in error logger
+//			e.printStackTrace();
+//		}
+		//Function<DiagnosticRequest, Diagnostic> versionFunc = VersionValidator::validateVersion;
+		//Function<DiagnosticRequest, Diagnostic> submoduleExistenceFunc = subModuleValidator::validateSubModuleExistence;
 		// Below is a mock Diagnostic function which creates a warning between inside
 		// <configuration> tags
-		Function<DiagnosticRequest, Diagnostic> configFunc = diagnosticReq -> new Diagnostic(diagnosticReq.getRange(),
-				"Configuration Error", DiagnosticSeverity.Warning, xmlDocument.getDocumentURI(), "XML");
+		//Function<DiagnosticRequest, Diagnostic> configFunc = diagnosticReq -> new Diagnostic(diagnosticReq.getRange(),
+		//		"Configuration Error", DiagnosticSeverity.Warning, xmlDocument.getDocumentURI(), "XML");
 
 		HashMap<String, Function<DiagnosticRequest, Diagnostic>> tagDiagnostics = new HashMap<>();
-		tagDiagnostics.put("version", versionFunc);
-		tagDiagnostics.put("configuration", configFunc);
-		tagDiagnostics.put("module", submoduleExistenceFunc);
+		//tagDiagnostics.put("version", versionFunc);
+		//tagDiagnostics.put("configuration", configFunc);
+		//tagDiagnostics.put("module", submoduleExistenceFunc);
 		return tagDiagnostics;
 	}
 

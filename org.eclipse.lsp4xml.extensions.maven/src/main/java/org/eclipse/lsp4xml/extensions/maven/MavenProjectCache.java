@@ -90,6 +90,7 @@ public class MavenProjectCache {
 		Integer last = lastCheckedVersion.get(URI.create(document.getTextDocument().getUri()));
 		if (last == null || last.intValue() < document.getTextDocument().getVersion()) {
 			parse(document);
+			MavenRepositoryCache.getInstance().update(getLastSuccessfulMavenProject(document));
 		}
 	}
 
@@ -149,17 +150,10 @@ public class MavenProjectCache {
 		
 	}
 	
-	public DefaultRepositorySystemSession getRepositorySystemSession() {
-		return this.repositorySystemSession;
-	}
-	
 	public RepositorySystem getRepositorySystem() {
 		return this.repositorySystem;
 	}
 
-	public MavenRepositorySystem getMavenRepositorySystem() {
-		return mavenRepositorySystem;
-	}
 
 	public ArtifactRepository getLocalRepository() {
 		return localRepo;
