@@ -3,12 +3,16 @@
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 	<modelVersion>4.0.0</modelVersion>
 
-	<groupId>org.test</groupId>
-	<artifactId>test</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
-	<packaging>pom</packaging>
+	<parent>
+		<groupId>org.test</groupId>
+		<artifactId>test</artifactId>
+		<version>0.0.1-SNAPSHOT</version>
+		<relativePath>pom-with-properties.xml</relativePath>
+	</parent>
+
+	<artifactId>child</artifactId>
 
 	<properties>
-		<myProperty>$</myProperty>
+		<anotherProperty>$</anotherProperty>
 	</properties>
 </project>
