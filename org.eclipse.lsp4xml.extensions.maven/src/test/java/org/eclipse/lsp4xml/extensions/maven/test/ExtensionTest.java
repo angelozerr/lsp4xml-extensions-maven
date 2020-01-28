@@ -13,6 +13,8 @@ import static org.junit.Assert.assertTrue;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.util.Collection;
 import java.util.Collections;
@@ -50,7 +52,7 @@ public class ExtensionTest {
 		connection.stop();
 	}
 
-	@Test public void testScopeCompletion() throws IOException, InterruptedException, ExecutionException {
+	@Test public void testScopeCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-with-module-error.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
 		connection.languageServer.getTextDocumentService().didOpen(params);
@@ -58,17 +60,26 @@ public class ExtensionTest {
 		assertTrue(completion.getRight().getItems().stream().map(CompletionItem::getLabel).anyMatch("runtime"::equals));
 	}
 
-	@Test public void testPropertyCompletion() throws IOException, InterruptedException, ExecutionException {
+	@Test public void testPropertyCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-with-properties.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
 		connection.languageServer.getTextDocumentService().didOpen(params);
-		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(10, 15))).get();
+		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(11, 15))).get();
 		List<CompletionItem> items = completion.getRight().getItems();
 		assertTrue(items.stream().map(CompletionItem::getLabel).anyMatch(label -> label.contains("myProperty")));
 		assertTrue(items.stream().map(CompletionItem::getLabel).anyMatch(label -> label.contains("project.build.directory")));
 	}
 
-	@Test public void testMissingArtifactIdError() throws IOException, InterruptedException, ExecutionException {
+	@Test public void testParentPropertyCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-with-properties-in-parent.xml");
+		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+		connection.languageServer.getTextDocumentService().didOpen(params);
+		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(15, 20))).get();
+		List<CompletionItem> items = completion.getRight().getItems();
+		assertTrue(items.stream().map(CompletionItem::getLabel).anyMatch(label -> label.contains("myProperty")));
+	}
+
+	@Test public void testMissingArtifactIdError() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-without-artifactId.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
 		connection.languageServer.getTextDocumentService().didOpen(params);
@@ -80,12 +91,10 @@ public class ExtensionTest {
 		assertTrue(connection.waitForDiagnostics(Collection<Diagnostic>::isEmpty,  10000));
 	}
 
-	TextDocumentItem createTextDocumentItem(String resourcePath) throws IOException {
-		File tempDir = Files.createTempDirectory("test").toFile();
-		File target = new File(tempDir, "pom.xml");
-		InputStream stream = getClass().getResourceAsStream(resourcePath);
-		java.nio.file.Files.copy(stream, target.toPath());
-		return new TextDocumentItem(target.toURI().toString(), "xml", 1, new String(Files.readAllBytes(target.toPath())));
+	TextDocumentItem createTextDocumentItem(String resourcePath) throws IOException, URISyntaxException {
+		URI uri = getClass().getResource(resourcePath).toURI();
+		File file = new File(uri);
+		return new TextDocumentItem(uri.toString(), "xml", 1, new String(Files.readAllBytes(file.toPath())));
 	}
 
 }
