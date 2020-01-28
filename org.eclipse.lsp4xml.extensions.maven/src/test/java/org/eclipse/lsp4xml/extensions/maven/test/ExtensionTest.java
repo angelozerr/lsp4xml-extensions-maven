@@ -19,6 +19,7 @@ import java.nio.file.Files;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 
 import org.eclipse.lsp4j.CompletionItem;
@@ -89,6 +90,16 @@ public class ExtensionTest {
 		didChange.setContentChanges(Collections.singletonList(new TextDocumentContentChangeEvent(new Range(new Position(5, 28), new Position(5, 28)), 0, "<artifactId>a</artifactId>")));
 		connection.languageServer.getTextDocumentService().didChange(didChange);
 		assertTrue(connection.waitForDiagnostics(Collection<Diagnostic>::isEmpty,  10000));
+	}
+
+	@Test public void testCompleteDependency() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-with-dependency.xml");
+		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+		connection.languageServer.getTextDocumentService().didOpen(params);
+		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(11, 7))).get();
+		List<CompletionItem> items = completion.getRight().getItems();
+		Optional<String> mavenCoreCompletionItem = items.stream().map(CompletionItem::getLabel).filter(label -> label.contains("org.apache.maven:maven-core")).findAny();
+		assertTrue(mavenCoreCompletionItem.isPresent());
 	}
 
 	TextDocumentItem createTextDocumentItem(String resourcePath) throws IOException, URISyntaxException {

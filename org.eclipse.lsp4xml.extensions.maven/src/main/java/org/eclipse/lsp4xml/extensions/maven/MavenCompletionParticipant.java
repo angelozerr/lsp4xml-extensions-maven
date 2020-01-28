@@ -10,15 +10,24 @@ package org.eclipse.lsp4xml.extensions.maven;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.AbstractMap.SimpleEntry;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Properties;
 import java.util.Set;
-import java.util.function.Supplier;
 
 import org.apache.maven.project.MavenProject;
+import org.apache.maven.repository.RepositorySystem;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
+import org.eclipse.aether.util.version.GenericVersionScheme;
+import org.eclipse.aether.version.InvalidVersionSpecificationException;
+import org.eclipse.aether.version.Version;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
 import org.eclipse.lsp4j.InsertTextFormat;
@@ -30,6 +39,7 @@ import org.eclipse.lsp4xml.commons.TextDocument;
 import org.eclipse.lsp4xml.commons.snippets.SnippetRegistry;
 import org.eclipse.lsp4xml.dom.DOMDocument;
 import org.eclipse.lsp4xml.dom.DOMElement;
+import org.eclipse.lsp4xml.dom.LineIndentInfo;
 import org.eclipse.lsp4xml.extensions.maven.searcher.ArtifactSearcherManager;
 import org.eclipse.lsp4xml.extensions.maven.searcher.LocalSubModuleSearcher;
 import org.eclipse.lsp4xml.extensions.maven.searcher.ParentSearcher;
@@ -79,6 +89,9 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 				collectGroupIdCompletion(request, response);
 			}
 			break;
+		case "dependencies":
+			collectLocalArtifacts(request, response);
+			break;
 		default:
 			initSnippets();
 			TextDocument document = parent.getOwnerDocument().getTextDocument();
@@ -95,6 +108,92 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		if (request.getNode().isText()) {
 			completeProperties(request, response);
 		}
+	}
+
+	private void collectLocalArtifacts(ICompletionRequest request, ICompletionResponse response) {
+		try {
+			Map<Entry<String, String>, Version> groupIdArtifactIdToVersion = getLocalArtifacts(RepositorySystem.defaultUserLocalRepository);
+			final DOMDocument xmlDocument = request.getXMLDocument();
+			final int requestOffset = request.getOffset();
+			int insertionOffset = requestOffset;
+			while (insertionOffset > 0 && Character.isAlphabetic(xmlDocument.getText().charAt(insertionOffset - 1))) {
+				insertionOffset--;
+			}
+			while (insertionOffset > 0 && xmlDocument.getText().charAt(insertionOffset - 1) != '\n') {
+				insertionOffset--;
+			}
+			final int theInsertionOffset = insertionOffset;
+			DOMElement parentElement = request.getParentElement();
+			String indent = "\t";
+			String lineDelimiter = "\n";
+			try {
+				LineIndentInfo lineIndentInfo = xmlDocument.getLineIndentInfo(xmlDocument.positionAt(parentElement.getStart()).getLine());
+				indent = lineIndentInfo.getWhitespacesIndent();
+				lineDelimiter = lineIndentInfo.getLineDelimiter();
+			} catch (BadLocationException ex) {
+				
+			}
+			StringBuilder refIndentBuilder = new StringBuilder();
+			while (parentElement != null) {
+				refIndentBuilder.append(indent);
+				parentElement = parentElement.getParentElement();
+			}
+			final String indentString = indent;
+			final String refIndent = refIndentBuilder.toString();
+			final String delim = lineDelimiter;
+			groupIdArtifactIdToVersion.forEach((groupIdArtifactId, version) -> {
+				CompletionItem item = new CompletionItem();
+				item.setLabel(groupIdArtifactId.getValue() + " - " + groupIdArtifactId.getKey() + ':' + groupIdArtifactId.getValue());
+				// TODO: deal with indentation
+				try {
+					item.setTextEdit(new TextEdit(new Range(xmlDocument.positionAt(theInsertionOffset), xmlDocument.positionAt(requestOffset)),
+							refIndent + "<dependency>" + delim +
+							refIndent + indentString + "<groupId>" + groupIdArtifactId.getKey() + "</groupId>" + delim +
+							refIndent + indentString + "<artifactId>" + groupIdArtifactId.getValue() + "</artifactId>" + delim +
+							refIndent + indentString + "<version>" + version.toString() + "</version>" + delim +
+							refIndent + "</dependency>" + delim +
+							refIndent));
+				} catch (BadLocationException e) {
+					e.printStackTrace();
+				}
+				item.setDocumentation("From local repository\n\n" + item.getTextEdit().getNewText());
+				response.addCompletionItem(item, false);
+			});
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
+	private Map<Entry<String, String>, Version> getLocalArtifacts(File localRepository) throws IOException {
+		final Path repoPath = localRepository.toPath();
+		Map<Entry<String, String>, Version> groupIdArtifactIdToVersion = new HashMap<>();
+		Files.walkFileTree(repoPath, Collections.emptySet(), 10, new SimpleFileVisitor<Path>() { 
+			@Override
+			public FileVisitResult preVisitDirectory(Path file, BasicFileAttributes attrs) throws IOException {
+				if (file.getFileName().toString().charAt(0) == '.') {
+					return FileVisitResult.SKIP_SUBTREE;
+				}
+				if (Character.isDigit(file.getFileName().toString().charAt(0))) {
+					Path artifactFolderPath = repoPath.relativize(file);
+					Version version;
+					try {
+						version = new GenericVersionScheme().parseVersion(artifactFolderPath.getFileName().toString());
+						String artifactId = artifactFolderPath.getParent().getFileName().toString();
+						String groupId = artifactFolderPath.getParent().getParent().toString().replace(artifactFolderPath.getFileSystem().getSeparator(), ".");
+						Entry<String, String> groupIdArtifactId = new SimpleEntry<>(groupId, artifactId);
+						Version existingVersion = groupIdArtifactIdToVersion.get(groupIdArtifactId);
+						if (existingVersion == null || existingVersion.compareTo(version) < 0 || (!version.toString().endsWith("-SNAPSHOT") && existingVersion.toString().endsWith("-SNAPSHOT"))) {
+							groupIdArtifactIdToVersion.put(groupIdArtifactId, version);
+						}
+					} catch (InvalidVersionSpecificationException e) {
+						e.printStackTrace();
+					}
+					return FileVisitResult.SKIP_SUBTREE;
+				}
+				return FileVisitResult.CONTINUE;
+			}
+		});
+		return groupIdArtifactIdToVersion;
 	}
 
 	private void completeProperties(ICompletionRequest request, ICompletionResponse response) {
