@@ -21,26 +21,33 @@ public class DiagnosticRequest {
 	private DOMNode node;
 	private DOMDocument xmlDocument;
 	private List<Diagnostic> diagnostics;
+
 	public DiagnosticRequest(DOMNode node, DOMDocument xmlDocument, List<Diagnostic> diagnostics) {
 		this.setNode(node);
 		this.setDOMDocument(xmlDocument);
 		this.setDiagnostics(diagnostics);
 	}
+
 	public DOMDocument getDOMDocument() {
 		return xmlDocument;
 	}
+
 	public void setDOMDocument(DOMDocument xmlDocument) {
 		this.xmlDocument = xmlDocument;
 	}
+
 	public DOMNode getNode() {
 		return node;
 	}
+
 	public void setNode(DOMNode node) {
 		this.node = node;
 	}
+
 	public List<Diagnostic> getDiagnostics() {
 		return diagnostics;
 	}
+
 	public void setDiagnostics(List<Diagnostic> diagnostics) {
 		this.diagnostics = diagnostics;
 	}
@@ -49,6 +56,5 @@ public class DiagnosticRequest {
 		return XMLPositionUtility.createRange(((DOMElement) node).getStartTagCloseOffset() + 1,
 				((DOMElement) node).getEndTagOpenOffset(), xmlDocument);
 	}
-
 
 }
