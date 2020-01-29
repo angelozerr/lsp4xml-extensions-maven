@@ -79,7 +79,7 @@ public class MavenDiagnosticParticipant implements IDiagnosticsParticipant {
 
 	private HashMap<String, Function<DiagnosticRequest, Diagnostic>> configureDiagnosticFunctions(
 			DOMDocument xmlDocument) {
-		SubModuleValidator subModuleValidator= new SubModuleValidator();
+		SubModuleValidator subModuleValidator = new SubModuleValidator();
 		try {
 			subModuleValidator.setPomFile(new File(xmlDocument.getDocumentURI().substring(5)));
 		} catch (IOException | XmlPullParserException e) {
@@ -104,7 +104,8 @@ public class MavenDiagnosticParticipant implements IDiagnosticsParticipant {
 		Diagnostic diagnostic = new Diagnostic();
 		diagnostic.setMessage(problem.getMessage());
 		diagnostic.setSeverity(toDiagnosticSeverity(problem.getSeverity()));
-		diagnostic.setRange(new Range(new Position(problem.getLineNumber() - 1, problem.getColumnNumber() - 1), new Position(problem.getLineNumber() - 1, problem.getColumnNumber())));
+		diagnostic.setRange(new Range(new Position(problem.getLineNumber() - 1, problem.getColumnNumber() - 1),
+				new Position(problem.getLineNumber() - 1, problem.getColumnNumber())));
 		return diagnostic;
 	}
 

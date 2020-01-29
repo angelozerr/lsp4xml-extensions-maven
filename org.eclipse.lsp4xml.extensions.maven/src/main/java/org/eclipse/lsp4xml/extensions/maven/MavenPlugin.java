@@ -45,11 +45,13 @@ public class MavenPlugin implements IXMLExtension {
 	public MavenPlugin() {
 	}
 
-	@Override public void doSave(ISaveContext context) {
+	@Override
+	public void doSave(ISaveContext context) {
 
 	}
 
-	@Override public void start(InitializeParams params, XMLExtensionsRegistry registry) {
+	@Override
+	public void start(InitializeParams params, XMLExtensionsRegistry registry) {
 		try {
 			container = newPlexusContainer();
 			cache = new MavenProjectCache(container);
@@ -94,7 +96,8 @@ public class MavenPlugin implements IXMLExtension {
 		return new DefaultPlexusContainer(mavenCoreCC);
 	}
 
-	@Override public void stop(XMLExtensionsRegistry registry) {
+	@Override
+	public void stop(XMLExtensionsRegistry registry) {
 		registry.unregisterCompletionParticipant(completionParticipant);
 		registry.unregisterDiagnosticsParticipant(diagnosticParticipant);
 		cache = null;

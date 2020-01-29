@@ -64,7 +64,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		if (parent == null || parent.getLocalName() == null) {
 			return;
 		}
-		//TODO: These two switch cases should be combined into one
+		// TODO: These two switch cases should be combined into one
 		switch (parent.getParentElement().getLocalName()) {
 		case "parent":
 			collectParentCompletion(request, response);
@@ -79,13 +79,13 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			collectScopeCompletion(request, response);
 			break;
 		case "groupId":
-			if (!parent.getParentElement().getLocalName().equals("parent")){
+			if (!parent.getParentElement().getLocalName().equals("parent")) {
 				collectGroupIdCompletion(request, response);
 			}
 			break;
 		case "module":
 			collectSubModuleCompletion(request, response);
-			if (!parent.getParentElement().getLocalName().equals("parent")){
+			if (!parent.getParentElement().getLocalName().equals("parent")) {
 				collectGroupIdCompletion(request, response);
 			}
 			break;
@@ -112,7 +112,8 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 
 	private void collectLocalArtifacts(ICompletionRequest request, ICompletionResponse response) {
 		try {
-			Map<Entry<String, String>, Version> groupIdArtifactIdToVersion = getLocalArtifacts(RepositorySystem.defaultUserLocalRepository);
+			Map<Entry<String, String>, Version> groupIdArtifactIdToVersion = getLocalArtifacts(
+					RepositorySystem.defaultUserLocalRepository);
 			final DOMDocument xmlDocument = request.getXMLDocument();
 			final int requestOffset = request.getOffset();
 			int insertionOffset = requestOffset;
@@ -127,11 +128,12 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			String indent = "\t";
 			String lineDelimiter = "\n";
 			try {
-				LineIndentInfo lineIndentInfo = xmlDocument.getLineIndentInfo(xmlDocument.positionAt(parentElement.getStart()).getLine());
+				LineIndentInfo lineIndentInfo = xmlDocument
+						.getLineIndentInfo(xmlDocument.positionAt(parentElement.getStart()).getLine());
 				indent = lineIndentInfo.getWhitespacesIndent();
 				lineDelimiter = lineIndentInfo.getLineDelimiter();
 			} catch (BadLocationException ex) {
-				
+
 			}
 			StringBuilder refIndentBuilder = new StringBuilder();
 			while (parentElement != null) {
@@ -143,16 +145,18 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			final String delim = lineDelimiter;
 			groupIdArtifactIdToVersion.forEach((groupIdArtifactId, version) -> {
 				CompletionItem item = new CompletionItem();
-				item.setLabel(groupIdArtifactId.getValue() + " - " + groupIdArtifactId.getKey() + ':' + groupIdArtifactId.getValue());
+				item.setLabel(groupIdArtifactId.getValue() + " - " + groupIdArtifactId.getKey() + ':'
+						+ groupIdArtifactId.getValue());
 				// TODO: deal with indentation
 				try {
-					item.setTextEdit(new TextEdit(new Range(xmlDocument.positionAt(theInsertionOffset), xmlDocument.positionAt(requestOffset)),
-							refIndent + "<dependency>" + delim +
-							refIndent + indentString + "<groupId>" + groupIdArtifactId.getKey() + "</groupId>" + delim +
-							refIndent + indentString + "<artifactId>" + groupIdArtifactId.getValue() + "</artifactId>" + delim +
-							refIndent + indentString + "<version>" + version.toString() + "</version>" + delim +
-							refIndent + "</dependency>" + delim +
-							refIndent));
+					item.setTextEdit(new TextEdit(
+							new Range(xmlDocument.positionAt(theInsertionOffset),
+									xmlDocument.positionAt(requestOffset)),
+							refIndent + "<dependency>" + delim + refIndent + indentString + "<groupId>"
+									+ groupIdArtifactId.getKey() + "</groupId>" + delim + refIndent + indentString
+									+ "<artifactId>" + groupIdArtifactId.getValue() + "</artifactId>" + delim
+									+ refIndent + indentString + "<version>" + version.toString() + "</version>" + delim
+									+ refIndent + "</dependency>" + delim + refIndent));
 				} catch (BadLocationException e) {
 					e.printStackTrace();
 				}
@@ -167,7 +171,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 	private Map<Entry<String, String>, Version> getLocalArtifacts(File localRepository) throws IOException {
 		final Path repoPath = localRepository.toPath();
 		Map<Entry<String, String>, Version> groupIdArtifactIdToVersion = new HashMap<>();
-		Files.walkFileTree(repoPath, Collections.emptySet(), 10, new SimpleFileVisitor<Path>() { 
+		Files.walkFileTree(repoPath, Collections.emptySet(), 10, new SimpleFileVisitor<Path>() {
 			@Override
 			public FileVisitResult preVisitDirectory(Path file, BasicFileAttributes attrs) throws IOException {
 				if (file.getFileName().toString().charAt(0) == '.') {
@@ -179,10 +183,13 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 					try {
 						version = new GenericVersionScheme().parseVersion(artifactFolderPath.getFileName().toString());
 						String artifactId = artifactFolderPath.getParent().getFileName().toString();
-						String groupId = artifactFolderPath.getParent().getParent().toString().replace(artifactFolderPath.getFileSystem().getSeparator(), ".");
+						String groupId = artifactFolderPath.getParent().getParent().toString()
+								.replace(artifactFolderPath.getFileSystem().getSeparator(), ".");
 						Entry<String, String> groupIdArtifactId = new SimpleEntry<>(groupId, artifactId);
 						Version existingVersion = groupIdArtifactIdToVersion.get(groupIdArtifactId);
-						if (existingVersion == null || existingVersion.compareTo(version) < 0 || (!version.toString().endsWith("-SNAPSHOT") && existingVersion.toString().endsWith("-SNAPSHOT"))) {
+						if (existingVersion == null || existingVersion.compareTo(version) < 0
+								|| (!version.toString().endsWith("-SNAPSHOT")
+										&& existingVersion.toString().endsWith("-SNAPSHOT"))) {
 							groupIdArtifactIdToVersion.put(groupIdArtifactId, version);
 						}
 					} catch (InvalidVersionSpecificationException e) {
@@ -214,7 +221,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		MavenProject project = cache.getLastSuccessfulMavenProject(request.getXMLDocument());
 		if (project != null && project.getProperties() != null) {
 			for (Entry<Object, Object> prop : project.getProperties().entrySet()) {
-				allProps.put((String)prop.getKey(), (String)prop.getValue());
+				allProps.put((String) prop.getKey(), (String) prop.getValue());
 			}
 		}
 		allProps.put("basedir", project == null ? "unknown" : project.getBasedir().toString());
@@ -224,7 +231,8 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		allProps.put("project.artifactId", project == null ? "unknown" : project.getArtifactId());
 		allProps.put("project.name", project == null ? "unknown" : project.getName());
 		allProps.put("project.build.directory", project == null ? "unknown" : project.getBuild().getDirectory());
-		allProps.put("project.build.outputDirectory", project == null ? "unknown" : project.getBuild().getOutputDirectory());
+		allProps.put("project.build.outputDirectory",
+				project == null ? "unknown" : project.getBuild().getOutputDirectory());
 
 		for (Entry<String, String> property : allProps.entrySet()) {
 			CompletionItem item = new CompletionItem();
@@ -233,7 +241,8 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			try {
 				TextEdit textEdit = new TextEdit();
 				textEdit.setNewText(item.getLabel());
-				Range range = new Range(xmlDocument.positionAt(initialPropertyOffset), xmlDocument.positionAt(request.getOffset()));
+				Range range = new Range(xmlDocument.positionAt(initialPropertyOffset),
+						xmlDocument.positionAt(request.getOffset()));
 				textEdit.setRange(range);
 				item.setTextEdit(textEdit);
 			} catch (BadLocationException e) {
@@ -252,7 +261,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 				doc);
 
 		try {
-			//TODO: Get the File properly without using substring
+			// TODO: Get the File properly without using substring
 			LocalSubModuleSearcher subModuleSearcher = LocalSubModuleSearcher.getInstance();
 			subModuleSearcher.setPomFile(new File(doc.getDocumentURI().substring(5)));
 			for (String module : subModuleSearcher.getSubModules()) {
@@ -312,7 +321,8 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			response.addCompletionItem(getParentVersion(doc, range));
 			break;
 		default:
-			//TODO: Make a snippet that autocompletes the entire parent (artifact, groupid and version)
+			// TODO: Make a snippet that autocompletes the entire parent (artifact, groupid
+			// and version)
 			break;
 		}
 

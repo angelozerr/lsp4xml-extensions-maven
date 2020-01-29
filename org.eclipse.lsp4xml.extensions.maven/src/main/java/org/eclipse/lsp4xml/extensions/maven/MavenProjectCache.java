@@ -60,18 +60,21 @@ public class MavenProjectCache {
 	/**
 	 * 
 	 * @param document
-	 * @return the last MavenDocument that could be build for the more recent version of the provided document. If document
-	 * fails to build a MavenProject, a former version will be returned. Can be <code>null</code>. 
+	 * @return the last MavenDocument that could be build for the more recent
+	 *         version of the provided document. If document fails to build a
+	 *         MavenProject, a former version will be returned. Can be
+	 *         <code>null</code>.
 	 */
 	public MavenProject getLastSuccessfulMavenProject(DOMDocument document) {
 		check(document);
 		return projectCache.get(URI.create(document.getTextDocument().getUri()));
 	}
-	
+
 	/**
 	 * 
 	 * @param document
-	 * @return the problems for the latest version of the document (either in cache, or the one passed in arguments)
+	 * @return the problems for the latest version of the document (either in cache,
+	 *         or the one passed in arguments)
 	 */
 	public Collection<ModelProblem> getProblemsFor(DOMDocument document) {
 		check(document);
@@ -107,10 +110,11 @@ public class MavenProjectCache {
 		} catch (ProjectBuildingException e) {
 			if (e.getResults() == null) {
 				if (e.getCause() instanceof ModelBuildingException) {
-					ModelBuildingException modelBuildingException = (ModelBuildingException)e.getCause();
+					ModelBuildingException modelBuildingException = (ModelBuildingException) e.getCause();
 					problems.addAll(modelBuildingException.getProblems());
 				} else {
-					problems.add(new DefaultModelProblem(e.getMessage(), Severity.FATAL, Version.BASE, null, -1, -1, e));
+					problems.add(
+							new DefaultModelProblem(e.getMessage(), Severity.FATAL, Version.BASE, null, -1, -1, e));
 				}
 			} else {
 				e.getResults().stream().flatMap(result -> result.getProblems().stream()).forEach(problems::add);
@@ -133,7 +137,8 @@ public class MavenProjectCache {
 		mavenRequest.setLocalRepositoryPath(RepositorySystem.defaultUserLocalRepository);
 		RepositorySystem repositorySystem = plexusContainer.lookup(RepositorySystem.class);
 		mavenRequest.setLocalRepository(repositorySystem.createDefaultLocalRepository());
-		DefaultRepositorySystemSessionFactory repositorySessionFactory = plexusContainer.lookup(DefaultRepositorySystemSessionFactory.class);
+		DefaultRepositorySystemSessionFactory repositorySessionFactory = plexusContainer
+				.lookup(DefaultRepositorySystemSessionFactory.class);
 		repositorySystemSession = repositorySessionFactory.newRepositorySession(mavenRequest);
 	}
 
