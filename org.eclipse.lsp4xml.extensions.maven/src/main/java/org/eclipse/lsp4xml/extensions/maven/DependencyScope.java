@@ -32,10 +32,6 @@ public enum DependencyScope {
 
 	private final String description;
 
-	private DependencyScope(String description) {
-		this(null, description);
-	}
-
 	private DependencyScope(String name, String description) {
 		this.name = name != null ? name : name();
 		this.description = description;

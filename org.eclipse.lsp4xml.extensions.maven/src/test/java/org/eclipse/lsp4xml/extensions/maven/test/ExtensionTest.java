@@ -33,6 +33,7 @@ import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.TextDocumentItem;
+import org.eclipse.lsp4j.TextEdit;
 import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.junit.After;
@@ -100,6 +101,38 @@ public class ExtensionTest {
 		List<CompletionItem> items = completion.getRight().getItems();
 		Optional<String> mavenCoreCompletionItem = items.stream().map(CompletionItem::getLabel).filter(label -> label.contains("org.apache.maven:maven-core")).findAny();
 		assertTrue(mavenCoreCompletionItem.isPresent());
+	}
+
+	@Test public void testCompleteScope() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+		TextDocumentItem textDocumentItem = createTextDocumentItem("/scope.xml");
+		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+		connection.languageServer.getTextDocumentService().didOpen(params);
+		{
+			Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(0, 7))).get();
+			List<CompletionItem> items = completion.getRight().getItems();
+			assertTrue(items.stream().map(CompletionItem::getTextEdit).map(TextEdit::getNewText).anyMatch("compile"::equals));
+		}
+		{
+			Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(1, 7))).get();
+			List<CompletionItem> items = completion.getRight().getItems();
+			assertTrue(items.stream().map(CompletionItem::getTextEdit).map(TextEdit::getNewText).anyMatch("compile</scope>"::equals));
+		}
+	}
+
+	@Test public void testCompletePhase() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+		TextDocumentItem textDocumentItem = createTextDocumentItem("/phase.xml");
+		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+		connection.languageServer.getTextDocumentService().didOpen(params);
+		{
+			Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(0, 7))).get();
+			List<CompletionItem> items = completion.getRight().getItems();
+			assertTrue(items.stream().map(CompletionItem::getTextEdit).map(TextEdit::getNewText).anyMatch("generate-resources"::equals));
+		}
+		{
+			Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(1, 7))).get();
+			List<CompletionItem> items = completion.getRight().getItems();
+			assertTrue(items.stream().map(CompletionItem::getTextEdit).map(TextEdit::getNewText).anyMatch("generate-resources</phase>"::equals));
+		}
 	}
 
 	TextDocumentItem createTextDocumentItem(String resourcePath) throws IOException, URISyntaxException {
