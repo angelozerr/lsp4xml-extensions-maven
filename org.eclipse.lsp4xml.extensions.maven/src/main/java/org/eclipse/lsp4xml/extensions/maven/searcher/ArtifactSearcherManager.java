@@ -17,7 +17,7 @@ public class ArtifactSearcherManager {
 	private final IArtifactSearcher localSearcher;
 
 	public ArtifactSearcherManager() {
-		localSearcher = new LocalArtifactSearcher();
+		localSearcher = new LocalRepositorySearcher();
 	}
 
 	public static ArtifactSearcherManager getInstance() {
