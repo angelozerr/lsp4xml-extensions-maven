@@ -12,7 +12,6 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
@@ -38,7 +37,6 @@ import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 public class ExtensionTest {
@@ -55,20 +53,32 @@ public class ExtensionTest {
 		connection.stop();
 	}
 
-	@Test public void testScopeCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+
+	@Test
+	public void testScopeCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-with-module-error.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
 		connection.languageServer.getTextDocumentService().didOpen(params);
-		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(12, 10))).get();
+		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService()
+				.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
+						new Position(12, 10)))
+				.get();
 		assertTrue(completion.getRight().getItems().stream().map(CompletionItem::getLabel).anyMatch("runtime"::equals));
 	}
 
+	
 	@Test public void testVersionCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-version-complete.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
 		connection.languageServer.getTextDocumentService().didOpen(params);
 		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(13, 13))).get();
-		assertTrue(completion.getRight().getItems().stream().map(CompletionItem::getLabel).anyMatch(label -> label.contains("3.6.3")));
+		List<CompletionItem> items = completion.getRight().getItems();
+		while (completionContains(items, "Updating Maven repository index...")
+				&& !(completionContains(items, "3.6.3") | completionContains(items, "Error"))) {
+			 items = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(13, 13))).get().getRight().getItems();
+		}
+		items = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(13, 13))).get().getRight().getItems();
+		assertTrue(completionContains(items, "3.6.3"));
 	}
 
 	@Test public void testVersionCompletionNoResults() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
@@ -76,79 +86,124 @@ public class ExtensionTest {
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
 		connection.languageServer.getTextDocumentService().didOpen(params);
 		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(13, 13))).get();
-		assertTrue(completion.getRight().getItems().stream().map(CompletionItem::getLabel).anyMatch(label -> label.contains("No artifact versions found.")));
+		List<CompletionItem> items = completion.getRight().getItems();
+		while (completionContains(items, "Updating Maven repository index...")
+				&& !(completionContains(items, "No artifact versions found.") | completionContains(items, "Error"))) {
+			 items = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(13, 13))).get().getRight().getItems();
+		}
+		items = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(13, 13))).get().getRight().getItems();
+		assertTrue(completionContains(items, "No artifact versions found."));
 	}
 
-	@Test public void testPropertyCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+	@Test
+	public void testPropertyCompletion()
+			throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-with-properties.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
 		connection.languageServer.getTextDocumentService().didOpen(params);
-		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(11, 15))).get();
+		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService()
+				.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
+						new Position(11, 15)))
+				.get();
 		List<CompletionItem> items = completion.getRight().getItems();
 		assertTrue(items.stream().map(CompletionItem::getLabel).anyMatch(label -> label.contains("myProperty")));
-		assertTrue(items.stream().map(CompletionItem::getLabel).anyMatch(label -> label.contains("project.build.directory")));
+		assertTrue(items.stream().map(CompletionItem::getLabel)
+				.anyMatch(label -> label.contains("project.build.directory")));
 	}
 
-	@Test public void testParentPropertyCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+	@Test
+	public void testParentPropertyCompletion()
+			throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-with-properties-in-parent.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
 		connection.languageServer.getTextDocumentService().didOpen(params);
-		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(15, 20))).get();
+		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService()
+				.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
+						new Position(15, 20)))
+				.get();
 		List<CompletionItem> items = completion.getRight().getItems();
 		assertTrue(items.stream().map(CompletionItem::getLabel).anyMatch(label -> label.contains("myProperty")));
 	}
 
-	@Test public void testMissingArtifactIdError() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+	@Test
+	public void testMissingArtifactIdError()
+			throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-without-artifactId.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
 		connection.languageServer.getTextDocumentService().didOpen(params);
-		assertTrue(connection.waitForDiagnostics(diagnostics -> diagnostics.stream().map(Diagnostic::getMessage).anyMatch(message -> message.contains("artifactId")), 5000));
+		assertTrue(connection.waitForDiagnostics(diagnostics -> diagnostics.stream().map(Diagnostic::getMessage)
+				.anyMatch(message -> message.contains("artifactId")), 5000));
 		DidChangeTextDocumentParams didChange = new DidChangeTextDocumentParams();
 		didChange.setTextDocument(new VersionedTextDocumentIdentifier(textDocumentItem.getUri(), 2));
-		didChange.setContentChanges(Collections.singletonList(new TextDocumentContentChangeEvent(new Range(new Position(5, 28), new Position(5, 28)), 0, "<artifactId>a</artifactId>")));
+		didChange.setContentChanges(Collections.singletonList(new TextDocumentContentChangeEvent(
+				new Range(new Position(5, 28), new Position(5, 28)), 0, "<artifactId>a</artifactId>")));
 		connection.languageServer.getTextDocumentService().didChange(didChange);
-		assertTrue(connection.waitForDiagnostics(Collection<Diagnostic>::isEmpty,  10000));
+		assertTrue(connection.waitForDiagnostics(Collection<Diagnostic>::isEmpty, 10000));
 	}
 
-	@Test public void testCompleteDependency() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+	@Test
+	public void testCompleteDependency()
+			throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-with-dependency.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
 		connection.languageServer.getTextDocumentService().didOpen(params);
-		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(11, 7))).get();
+		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService()
+				.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
+						new Position(11, 7)))
+				.get();
 		List<CompletionItem> items = completion.getRight().getItems();
-		Optional<String> mavenCoreCompletionItem = items.stream().map(CompletionItem::getLabel).filter(label -> label.contains("org.apache.maven:maven-core")).findAny();
+		Optional<String> mavenCoreCompletionItem = items.stream().map(CompletionItem::getLabel)
+				.filter(label -> label.contains("org.apache.maven:maven-core")).findAny();
 		assertTrue(mavenCoreCompletionItem.isPresent());
 	}
 
-	@Test public void testCompleteScope() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+	@Test
+	public void testCompleteScope() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/scope.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
 		connection.languageServer.getTextDocumentService().didOpen(params);
 		{
-			Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(0, 7))).get();
+			Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService()
+					.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
+							new Position(0, 7)))
+					.get();
 			List<CompletionItem> items = completion.getRight().getItems();
-			assertTrue(items.stream().map(CompletionItem::getTextEdit).map(TextEdit::getNewText).anyMatch("compile"::equals));
+			assertTrue(items.stream().map(CompletionItem::getTextEdit).map(TextEdit::getNewText)
+					.anyMatch("compile"::equals));
 		}
 		{
-			Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(1, 7))).get();
+			Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService()
+					.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
+							new Position(1, 7)))
+					.get();
 			List<CompletionItem> items = completion.getRight().getItems();
-			assertTrue(items.stream().map(CompletionItem::getTextEdit).map(TextEdit::getNewText).anyMatch("compile</scope>"::equals));
+			assertTrue(items.stream().map(CompletionItem::getTextEdit).map(TextEdit::getNewText)
+					.anyMatch("compile</scope>"::equals));
 		}
 	}
 
-	@Test public void testCompletePhase() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+	@Test
+	public void testCompletePhase() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/phase.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
 		connection.languageServer.getTextDocumentService().didOpen(params);
 		{
-			Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(0, 7))).get();
+			Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService()
+					.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
+							new Position(0, 7)))
+					.get();
 			List<CompletionItem> items = completion.getRight().getItems();
-			assertTrue(items.stream().map(CompletionItem::getTextEdit).map(TextEdit::getNewText).anyMatch("generate-resources"::equals));
+			assertTrue(items.stream().map(CompletionItem::getTextEdit).map(TextEdit::getNewText)
+					.anyMatch("generate-resources"::equals));
 		}
 		{
-			Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(1, 7))).get();
+			Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService()
+					.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
+							new Position(1, 7)))
+					.get();
 			List<CompletionItem> items = completion.getRight().getItems();
-			assertTrue(items.stream().map(CompletionItem::getTextEdit).map(TextEdit::getNewText).anyMatch("generate-resources</phase>"::equals));
+			assertTrue(items.stream().map(CompletionItem::getTextEdit).map(TextEdit::getNewText)
+					.anyMatch("generate-resources</phase>"::equals));
 		}
 	}
 
@@ -156,6 +211,10 @@ public class ExtensionTest {
 		URI uri = getClass().getResource(resourcePath).toURI();
 		File file = new File(uri);
 		return new TextDocumentItem(uri.toString(), "xml", 1, new String(Files.readAllBytes(file.toPath())));
+	}
+
+	boolean completionContains(List<CompletionItem> completionItems, String searchString) {
+		return completionItems.stream().map(CompletionItem::getLabel).anyMatch(label -> label.contains(searchString));
 	}
 
 }

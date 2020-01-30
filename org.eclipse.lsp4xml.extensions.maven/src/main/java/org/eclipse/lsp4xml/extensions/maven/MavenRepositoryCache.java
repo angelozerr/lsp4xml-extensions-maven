@@ -48,7 +48,7 @@ public class MavenRepositoryCache {
 
 		}
 		Model model = project.getModel();
-		if (model != null) {
+
 			repos.addAll(model.getRepositories().stream()
 					.map(repo -> new RemoteRepository.Builder(repo.getId(), repo.getLayout(), repo.getUrl()).build())
 					.distinct().collect(Collectors.toList()));
@@ -67,7 +67,6 @@ public class MavenRepositoryCache {
 					}
 				}
 			}
-		}
 
 		// TODO: get repositories from maven user and global settings.xml
 
