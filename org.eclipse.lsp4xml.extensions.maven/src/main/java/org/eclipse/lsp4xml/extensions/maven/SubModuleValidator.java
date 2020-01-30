@@ -26,7 +26,8 @@ public class SubModuleValidator {
 	Model model;
 	MavenXpp3Reader mavenreader = new MavenXpp3Reader();
 
-	// TODO: This class shouldn't be instantiating the maven model, but be receiving it from a context class instead
+	// TODO: This class shouldn't be instantiating the maven model, but be receiving
+	// it from a context class instead
 	public void setPomFile(File pomFile) throws FileNotFoundException, IOException, XmlPullParserException {
 		model = mavenreader.read(new FileReader(pomFile));
 	}
@@ -38,11 +39,12 @@ public class SubModuleValidator {
 		Range range = diagnosticRequest.getRange();
 		String tagContent = null;
 		if (node.hasChildNodes()) {
-			tagContent = node.getChild(0).getNodeValue(); // tagContent is the module to validate eg. <module>tagContent</module>
+			tagContent = node.getChild(0).getNodeValue(); // tagContent is the module to validate eg.
+															// <module>tagContent</module>
 		}
 		if (node.hasChildNodes() && !model.getModules().contains(tagContent)) {
-			diagnostic = new Diagnostic(range, String.format("Module '%s' does not exist", tagContent), DiagnosticSeverity.Error,
-					xmlDocument.getDocumentURI(), "XML");
+			diagnostic = new Diagnostic(range, String.format("Module '%s' does not exist", tagContent),
+					DiagnosticSeverity.Error, xmlDocument.getDocumentURI(), "XML");
 			diagnosticRequest.getDiagnostics().add(diagnostic);
 		}
 		return diagnostic;
