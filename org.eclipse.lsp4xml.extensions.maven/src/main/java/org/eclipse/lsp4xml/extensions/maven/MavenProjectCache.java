@@ -19,6 +19,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.maven.artifact.InvalidRepositoryException;
+import org.apache.maven.artifact.repository.ArtifactRepository;
 import org.apache.maven.execution.DefaultMavenExecutionRequest;
 import org.apache.maven.execution.MavenExecutionRequest;
 import org.apache.maven.internal.aether.DefaultRepositorySystemSessionFactory;
@@ -38,6 +39,7 @@ import org.codehaus.plexus.PlexusContainer;
 import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.lsp4xml.dom.DOMDocument;
+import org.eclipse.lsp4xml.extensions.maven.searcher.ArtifactVersionSearcher;
 
 public class MavenProjectCache {
 
@@ -49,6 +51,8 @@ public class MavenProjectCache {
 	private MavenExecutionRequest mavenRequest;
 	private DefaultRepositorySystemSession repositorySystemSession;
 	private ProjectBuilder projectBuilder;
+	private RepositorySystem repositorySystem;
+	private ArtifactRepository localRepo;
 
 	public MavenProjectCache(PlexusContainer container) {
 		this.plexusContainer = container;
@@ -85,6 +89,7 @@ public class MavenProjectCache {
 		Integer last = lastCheckedVersion.get(URI.create(document.getTextDocument().getUri()));
 		if (last == null || last.intValue() < document.getTextDocument().getVersion()) {
 			parse(document);
+			MavenRepositoryCache.getInstance().update(getLastSuccessfulMavenProject(document));
 		}
 	}
 
@@ -132,14 +137,27 @@ public class MavenProjectCache {
 	}
 
 	private void initializeMavenBuildState() throws ComponentLookupException, InvalidRepositoryException {
-		projectBuilder = plexusContainer.lookup(ProjectBuilder.class);
+		projectBuilder = getPlexusContainer().lookup(ProjectBuilder.class);
 		mavenRequest = new DefaultMavenExecutionRequest();
 		mavenRequest.setLocalRepositoryPath(RepositorySystem.defaultUserLocalRepository);
-		RepositorySystem repositorySystem = plexusContainer.lookup(RepositorySystem.class);
-		mavenRequest.setLocalRepository(repositorySystem.createDefaultLocalRepository());
-		DefaultRepositorySystemSessionFactory repositorySessionFactory = plexusContainer
-				.lookup(DefaultRepositorySystemSessionFactory.class);
+		repositorySystem = getPlexusContainer().lookup(RepositorySystem.class);
+		localRepo = repositorySystem.createDefaultLocalRepository();
+		mavenRequest.setLocalRepository(getLocalRepository());
+		DefaultRepositorySystemSessionFactory repositorySessionFactory = getPlexusContainer().lookup(DefaultRepositorySystemSessionFactory.class);
 		repositorySystemSession = repositorySessionFactory.newRepositorySession(mavenRequest);
+	}
+	
+	public RepositorySystem getRepositorySystem() {
+		return this.repositorySystem;
+	}
+
+
+	public ArtifactRepository getLocalRepository() {
+		return localRepo;
+	}
+
+	public PlexusContainer getPlexusContainer() {
+		return plexusContainer;
 	}
 
 }

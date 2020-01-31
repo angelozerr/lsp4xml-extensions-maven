@@ -20,35 +20,42 @@ import org.eclipse.lsp4xml.dom.DOMNode;
 
 public class VersionValidator {
 
-	private static Artifact setArtifact(DOMNode node) {
+	public static Artifact parseArtifact(DOMNode node) {
 		String groupId = "MissingGroupID";
 		String artifactId = "MissingArtifactID";
 		String version = "1.0.0";
 		String scope = "compile"; // Default scope if no scope is specified
 		String type = "jar"; // Default type is jar if no type is specified
 		String classifier = null; // Default classifier is null
-		for (DOMNode tag : node.getParentElement().getChildren()) {
-			switch (tag.getLocalName()) {
-			case "groupId":
-				groupId = tag.getChild(0).getNodeValue();
-				break;
-			case "artifactId":
-				artifactId = tag.getChild(0).getNodeValue();
-				break;
-			case "version":
-				version = tag.getChild(0).getNodeValue();
-				break;
-			case "scope":
-				scope = tag.getChild(0).getNodeValue();
-				break;
-			case "type":
-				type = tag.getChild(0).getNodeValue();
-				break;
-			case "classifier":
-				classifier = tag.getChild(0).getNodeValue();
-				break;
-			}
+		try {
+			for (DOMNode tag : node.getParentElement().getChildren()) {
+				if (tag != null && tag.hasChildNodes() && !tag.getChild(0).getNodeValue().trim().isEmpty()) {
+					switch (tag.getLocalName()) {
+					case "groupId":
+						groupId = tag.getChild(0).getNodeValue();
+						break;
+					case "artifactId":
+						artifactId = tag.getChild(0).getNodeValue();
+						break;
+					case "version":
+						version = tag.getChild(0).getNodeValue();
+						break;
+					case "scope":
+						scope = tag.getChild(0).getNodeValue();
+						break;
+					case "type":
+						type = tag.getChild(0).getNodeValue();
+						break;
+					case "classifier":
+						classifier = tag.getChild(0).getNodeValue();
+						break;
+					}
+				}
 
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+			System.out.println("Error parsing Artifact");
 		}
 		return new DefaultArtifact(groupId, artifactId, version, scope, type, classifier,
 				new DefaultArtifactHandler(type));
@@ -57,7 +64,7 @@ public class VersionValidator {
 	public static Diagnostic validateVersion(DiagnosticRequest diagnosticRequest) {
 		DOMNode node = diagnosticRequest.getNode();
 		DOMDocument xmlDocument = diagnosticRequest.getDOMDocument();
-		Artifact artifact = setArtifact(node);
+		Artifact artifact = parseArtifact(node);
 		Diagnostic diagnostic = null;
 		Range range = diagnosticRequest.getRange();
 		try {

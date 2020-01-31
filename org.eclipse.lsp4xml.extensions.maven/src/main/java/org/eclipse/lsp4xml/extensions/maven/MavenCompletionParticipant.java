@@ -15,11 +15,17 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 
+import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.versioning.ArtifactVersion;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.repository.RepositorySystem;
+import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
@@ -35,6 +41,7 @@ import org.eclipse.lsp4xml.dom.DOMElement;
 import org.eclipse.lsp4xml.dom.DOMNode;
 import org.eclipse.lsp4xml.dom.LineIndentInfo;
 import org.eclipse.lsp4xml.extensions.maven.searcher.ArtifactSearcherManager;
+import org.eclipse.lsp4xml.extensions.maven.searcher.ArtifactVersionSearcher;
 import org.eclipse.lsp4xml.extensions.maven.searcher.LocalRepositorySearcher;
 import org.eclipse.lsp4xml.extensions.maven.searcher.LocalSubModuleSearcher;
 import org.eclipse.lsp4xml.extensions.maven.searcher.ParentSearcher;
@@ -46,11 +53,21 @@ import org.eclipse.lsp4xml.utils.XMLPositionUtility;
 public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 
 	private boolean snippetsLoaded;
-	private final MavenProjectCache cache;
 	private final LocalRepositorySearcher localRepositorySearcher = new LocalRepositorySearcher();
+	private final MavenProjectCache cache;
+	private CompletableFuture<Void> indexSyncRequest;
+	ArtifactVersionSearcher artifactVersionSearcher = ArtifactVersionSearcher.getInstance();
 
 	public MavenCompletionParticipant(MavenProjectCache cache) {
 		this.cache = cache;
+
+		try {
+			indexSyncRequest = artifactVersionSearcher.init(cache.getPlexusContainer());
+			indexSyncRequest.get(500, TimeUnit.MILLISECONDS);
+		} catch (ComponentLookupException | InterruptedException | ExecutionException | TimeoutException e) {
+			e.printStackTrace();
+		}
+
 	}
 
 	@Override
@@ -73,6 +90,9 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			}
 		}
 		switch (parent.getLocalName()) {
+		case "version":
+			collectVersionCompletion(request, response);
+			break;
 		case "scope":
 			collectSimpleCompletionItems(Arrays.asList(DependencyScope.values()), DependencyScope::getName, DependencyScope::getDescription, request, response);
 			break;
@@ -216,6 +236,34 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		}
 	}
 
+	private void collectVersionCompletion(ICompletionRequest request, ICompletionResponse response) {
+		DOMElement node = request.getParentElement();
+		DOMDocument doc = request.getXMLDocument();
+
+		Range range = XMLPositionUtility.createRange(node.getStartTagCloseOffset() + 1, node.getEndTagOpenOffset(),
+				doc);
+
+		Artifact artifactToSearch = VersionValidator.parseArtifact(node);
+		if (indexSyncRequest.isDone()) {
+			try {
+				for (String version : artifactVersionSearcher.getArtifactVersions(artifactToSearch).get()) {
+					response.addCompletionItem(toCompletionItem(version, "Artifact Version", range));
+				}
+			} catch (InterruptedException e) {
+				response.addCompletionItem(
+						toCompletionItem("Error: Artifact version search interrupted", "Error", range));
+				e.printStackTrace();
+			} catch (ExecutionException e) {
+				response.addCompletionItem(
+						toCompletionItem("Error: Artifact version search error occured", "Error", range));
+				e.printStackTrace();
+			}
+		} else {
+			response.addCompletionItem(toCompletionItem("Updating Maven repository index...",
+					"Maven repository index update in progress", range));
+		}
+	}
+
 	private void collectSubModuleCompletion(ICompletionRequest request, ICompletionResponse response) {
 		DOMElement node = request.getParentElement();
 		DOMDocument doc = request.getXMLDocument();
@@ -284,8 +332,6 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			response.addCompletionItem(getParentVersion(doc, range));
 			break;
 		default:
-			// TODO: Make a snippet that autocompletes the entire parent (artifact, groupid
-			// and version)
 			break;
 		}
 
@@ -351,4 +397,24 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		}
 	}
 
+	/**
+	 * CompletionItem
+	 * Utility function, takes a label string, description and range and returns a
+	 * 
+	 * @param description Completion description
+	 * @param label       Completion label
+	 * @return CompletionItem resulting from the label, description and range given
+	 * @param range       Range where the completion will be inserted
+	 */
+	private static CompletionItem toCompletionItem(String label, String description, Range range) {
+		CompletionItem item = new CompletionItem();
+		item.setLabel(label);
+		item.setKind(CompletionItemKind.Property);
+		String insertText = label;
+		item.setDocumentation(Either.forLeft(description));
+		item.setFilterText(insertText);
+		item.setInsertTextFormat(InsertTextFormat.PlainText);
+		item.setTextEdit(new TextEdit(range, insertText));
+		return item;
+	}
 }
