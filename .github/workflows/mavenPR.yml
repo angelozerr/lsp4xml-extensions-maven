@@ -17,4 +17,4 @@ jobs:
       with:
         java-version: 1.8
     - name: Build with Maven
-      run: mvn -X -B clean verify package --file org.eclipse.lsp4xml.extensions.maven/pom.xml
+      run: mvn -B clean verify package --file org.eclipse.lsp4xml.extensions.maven/pom.xml
