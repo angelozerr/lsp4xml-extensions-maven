@@ -10,26 +10,17 @@ package org.eclipse.lsp4xml.extensions.maven;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.FileVisitResult;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.util.AbstractMap.SimpleEntry;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.function.Function;
 
+import org.apache.maven.artifact.versioning.ArtifactVersion;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.repository.RepositorySystem;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
-import org.eclipse.aether.util.version.GenericVersionScheme;
-import org.eclipse.aether.version.InvalidVersionSpecificationException;
-import org.eclipse.aether.version.Version;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
 import org.eclipse.lsp4j.InsertTextFormat;
@@ -44,6 +35,7 @@ import org.eclipse.lsp4xml.dom.DOMElement;
 import org.eclipse.lsp4xml.dom.DOMNode;
 import org.eclipse.lsp4xml.dom.LineIndentInfo;
 import org.eclipse.lsp4xml.extensions.maven.searcher.ArtifactSearcherManager;
+import org.eclipse.lsp4xml.extensions.maven.searcher.LocalRepositorySearcher;
 import org.eclipse.lsp4xml.extensions.maven.searcher.LocalSubModuleSearcher;
 import org.eclipse.lsp4xml.extensions.maven.searcher.ParentSearcher;
 import org.eclipse.lsp4xml.services.extensions.CompletionParticipantAdapter;
@@ -54,7 +46,8 @@ import org.eclipse.lsp4xml.utils.XMLPositionUtility;
 public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 
 	private boolean snippetsLoaded;
-	private MavenProjectCache cache;
+	private final MavenProjectCache cache;
+	private final LocalRepositorySearcher localRepositorySearcher = new LocalRepositorySearcher();
 
 	public MavenCompletionParticipant(MavenProjectCache cache) {
 		this.cache = cache;
@@ -118,8 +111,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 
 	private void collectLocalArtifacts(ICompletionRequest request, ICompletionResponse response) {
 		try {
-			Map<Entry<String, String>, Version> groupIdArtifactIdToVersion = getLocalArtifacts(
-					RepositorySystem.defaultUserLocalRepository);
+			Map<Entry<String, String>, ArtifactVersion> groupIdArtifactIdToVersion = localRepositorySearcher.getLocalArtifacts(RepositorySystem.defaultUserLocalRepository);
 			final DOMDocument xmlDocument = request.getXMLDocument();
 			final int requestOffset = request.getOffset();
 			int insertionOffset = requestOffset;
@@ -172,41 +164,6 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-	}
-
-	private Map<Entry<String, String>, Version> getLocalArtifacts(File localRepository) throws IOException {
-		final Path repoPath = localRepository.toPath();
-		Map<Entry<String, String>, Version> groupIdArtifactIdToVersion = new HashMap<>();
-		Files.walkFileTree(repoPath, Collections.emptySet(), 10, new SimpleFileVisitor<Path>() {
-			@Override
-			public FileVisitResult preVisitDirectory(Path file, BasicFileAttributes attrs) throws IOException {
-				if (file.getFileName().toString().charAt(0) == '.') {
-					return FileVisitResult.SKIP_SUBTREE;
-				}
-				if (Character.isDigit(file.getFileName().toString().charAt(0))) {
-					Path artifactFolderPath = repoPath.relativize(file);
-					Version version;
-					try {
-						version = new GenericVersionScheme().parseVersion(artifactFolderPath.getFileName().toString());
-						String artifactId = artifactFolderPath.getParent().getFileName().toString();
-						String groupId = artifactFolderPath.getParent().getParent().toString()
-								.replace(artifactFolderPath.getFileSystem().getSeparator(), ".");
-						Entry<String, String> groupIdArtifactId = new SimpleEntry<>(groupId, artifactId);
-						Version existingVersion = groupIdArtifactIdToVersion.get(groupIdArtifactId);
-						if (existingVersion == null || existingVersion.compareTo(version) < 0
-								|| (!version.toString().endsWith("-SNAPSHOT")
-										&& existingVersion.toString().endsWith("-SNAPSHOT"))) {
-							groupIdArtifactIdToVersion.put(groupIdArtifactId, version);
-						}
-					} catch (InvalidVersionSpecificationException e) {
-						e.printStackTrace();
-					}
-					return FileVisitResult.SKIP_SUBTREE;
-				}
-				return FileVisitResult.CONTINUE;
-			}
-		});
-		return groupIdArtifactIdToVersion;
 	}
 
 	private void completeProperties(ICompletionRequest request, ICompletionResponse response) {
