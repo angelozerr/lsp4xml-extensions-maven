@@ -20,6 +20,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionList;
@@ -37,6 +39,7 @@ import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 public class ExtensionTest {
@@ -54,20 +57,8 @@ public class ExtensionTest {
 	}
 
 
-	@Test
-	public void testScopeCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
-		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-with-module-error.xml");
-		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
-		connection.languageServer.getTextDocumentService().didOpen(params);
-		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService()
-				.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
-						new Position(12, 10)))
-				.get();
-		assertTrue(completion.getRight().getItems().stream().map(CompletionItem::getLabel).anyMatch("runtime"::equals));
-	}
-
-	
-	@Test public void testVersionCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+	@Test(timeout=60000)
+	public void testVersionCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-version-complete.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
 		connection.languageServer.getTextDocumentService().didOpen(params);
@@ -81,7 +72,9 @@ public class ExtensionTest {
 		assertTrue(completionContains(items, "3.6.3"));
 	}
 
-	@Test public void testVersionCompletionNoResults() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+	@Ignore
+	@Test(timeout=60000)
+	public void testVersionCompletionNoResults() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-version-complete-no-results.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
 		connection.languageServer.getTextDocumentService().didOpen(params);
@@ -94,8 +87,22 @@ public class ExtensionTest {
 		items = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(13, 13))).get().getRight().getItems();
 		assertTrue(completionContains(items, "No artifact versions found."));
 	}
+	
 
-	@Test
+	@Test(timeout=10000)
+	public void testScopeCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-with-module-error.xml");
+		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+		connection.languageServer.getTextDocumentService().didOpen(params);
+		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService()
+				.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
+						new Position(12, 10)))
+				.get();
+		assertTrue(completion.getRight().getItems().stream().map(CompletionItem::getLabel).anyMatch("runtime"::equals));
+	}
+
+
+	@Test(timeout=10000)
 	public void testPropertyCompletion()
 			throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-with-properties.xml");
@@ -111,7 +118,8 @@ public class ExtensionTest {
 				.anyMatch(label -> label.contains("project.build.directory")));
 	}
 
-	@Test
+
+	@Test(timeout=10000)
 	public void testParentPropertyCompletion()
 			throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-with-properties-in-parent.xml");
@@ -126,22 +134,54 @@ public class ExtensionTest {
 	}
 
 	@Test
+	public void testLocalParentGAVCompletion()
+			throws IOException, InterruptedException, ExecutionException, URISyntaxException, TimeoutException {
+		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-local-parent-complete.xml");
+		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+		connection.languageServer.getTextDocumentService().didOpen(params);
+		List<CompletionItem> items = Collections.emptyList(); 
+		
+		items = connection.languageServer.getTextDocumentService()
+				.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
+						new Position(8, 12)))
+				.get(10000, TimeUnit.MILLISECONDS).getRight().getItems();
+
+		assertTrue(completionContains(items, "0.0.1-SNAPSHOT"));
+		
+		items = connection.languageServer.getTextDocumentService()
+				.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
+						new Position(7, 15)))
+				.get(10000, TimeUnit.MILLISECONDS).getRight().getItems();
+
+		assertTrue(completionContains(items, "test"));
+
+		items = connection.languageServer.getTextDocumentService()
+				.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
+						new Position(6, 12)))
+				.get(10000, TimeUnit.MILLISECONDS).getRight().getItems();
+
+		assertTrue(completionContains(items, "org.test"));
+	}
+
+
+	@Test
 	public void testMissingArtifactIdError()
 			throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-without-artifactId.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
 		connection.languageServer.getTextDocumentService().didOpen(params);
 		assertTrue(connection.waitForDiagnostics(diagnostics -> diagnostics.stream().map(Diagnostic::getMessage)
-				.anyMatch(message -> message.contains("artifactId")), 5000));
+				.anyMatch(message -> message.contains("artifactId")), 15000));
 		DidChangeTextDocumentParams didChange = new DidChangeTextDocumentParams();
 		didChange.setTextDocument(new VersionedTextDocumentIdentifier(textDocumentItem.getUri(), 2));
 		didChange.setContentChanges(Collections.singletonList(new TextDocumentContentChangeEvent(
 				new Range(new Position(5, 28), new Position(5, 28)), 0, "<artifactId>a</artifactId>")));
 		connection.languageServer.getTextDocumentService().didChange(didChange);
-		assertTrue(connection.waitForDiagnostics(Collection<Diagnostic>::isEmpty, 10000));
+		assertTrue(connection.waitForDiagnostics(Collection<Diagnostic>::isEmpty, 20000));
 	}
 
-	@Test
+
+	@Test(timeout=90000)
 	public void testCompleteDependency()
 			throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-with-dependency.xml");
@@ -157,7 +197,8 @@ public class ExtensionTest {
 		assertTrue(mavenCoreCompletionItem.isPresent());
 	}
 
-	@Test
+
+	@Test(timeout=15000)
 	public void testCompleteScope() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/scope.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
@@ -182,7 +223,8 @@ public class ExtensionTest {
 		}
 	}
 
-	@Test
+
+	@Test(timeout=15000)
 	public void testCompletePhase() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/phase.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
