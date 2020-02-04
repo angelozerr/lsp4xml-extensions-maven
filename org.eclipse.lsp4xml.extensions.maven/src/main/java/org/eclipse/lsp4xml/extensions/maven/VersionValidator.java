@@ -20,13 +20,16 @@ import org.eclipse.lsp4xml.dom.DOMNode;
 
 public class VersionValidator {
 
+	public static final Artifact placeholderArtifact = new DefaultArtifact("MissingGroupID", "MissingArtifactID",
+			"1.0.0", "compile", "jar", null, new DefaultArtifactHandler("jar"));
+
 	public static Artifact parseArtifact(DOMNode node) {
-		String groupId = "MissingGroupID";
-		String artifactId = "MissingArtifactID";
-		String version = "1.0.0";
-		String scope = "compile"; // Default scope if no scope is specified
-		String type = "jar"; // Default type is jar if no type is specified
-		String classifier = null; // Default classifier is null
+		String groupId = placeholderArtifact.getGroupId();
+		String artifactId = placeholderArtifact.getArtifactId();
+		String version = placeholderArtifact.getVersion();
+		String scope = placeholderArtifact.getScope();
+		String type = placeholderArtifact.getType();
+		String classifier = placeholderArtifact.getClassifier();
 		try {
 			for (DOMNode tag : node.getParentElement().getChildren()) {
 				if (tag != null && tag.hasChildNodes() && !tag.getChild(0).getNodeValue().trim().isEmpty()) {

@@ -39,7 +39,6 @@ import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 public class ExtensionTest {
@@ -56,25 +55,59 @@ public class ExtensionTest {
 		connection.stop();
 	}
 
-
-	@Test(timeout=60000)
-	public void testVersionCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
-		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-version-complete.xml");
+	@Test(timeout=120000)
+	public void testRemoteGroupIdCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-remote-groupId-complete.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
 		connection.languageServer.getTextDocumentService().didOpen(params);
-		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(13, 13))).get();
+		Position pos = new Position(11, 19);
+		String desiredCompletion = "com.google.android";
+		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), pos)).get();
 		List<CompletionItem> items = completion.getRight().getItems();
 		while (completionContains(items, "Updating Maven repository index...")
-				&& !(completionContains(items, "3.6.3") | completionContains(items, "Error"))) {
-			 items = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(13, 13))).get().getRight().getItems();
+				&& !(completionContains(items, desiredCompletion) | completionContains(items, "Error"))) {
+			 items = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), pos)).get().getRight().getItems();
 		}
-		items = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(13, 13))).get().getRight().getItems();
-		assertTrue(completionContains(items, "3.6.3"));
+		items = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), pos)).get().getRight().getItems();
+		assertTrue(completionContains(items, desiredCompletion));
+	}
+	
+	@Test(timeout=120000)
+	public void testRemoteArtifactIdCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-remote-artifactId-complete.xml");
+		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+		connection.languageServer.getTextDocumentService().didOpen(params);
+		Position pos = new Position(12, 15);
+		String desiredCompletion = "android";
+		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), pos)).get();
+		List<CompletionItem> items = completion.getRight().getItems();
+		while (completionContains(items, "Updating Maven repository index...")
+				&& !(completionContains(items, desiredCompletion) | completionContains(items, "Error"))) {
+			 items = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), pos)).get().getRight().getItems();
+		}
+		items = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), pos)).get().getRight().getItems();
+		assertTrue(completionContains(items, desiredCompletion));
+	}
+	
+	@Test(timeout=120000)
+	public void testRemoteVersionCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-remote-version-complete.xml");
+		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+		connection.languageServer.getTextDocumentService().didOpen(params);
+		Position pos = new Position(13, 13);
+		String desiredCompletion = "4.1.1.4";
+		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), pos)).get();
+		List<CompletionItem> items = completion.getRight().getItems();
+		while (completionContains(items, "Updating Maven repository index...")
+				&& !(completionContains(items, desiredCompletion) | completionContains(items, "Error"))) {
+			 items = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), pos)).get().getRight().getItems();
+		}
+		items = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), pos)).get().getRight().getItems();
+		assertTrue(completionContains(items, desiredCompletion));
 	}
 
-	@Ignore
-	@Test(timeout=60000)
-	public void testVersionCompletionNoResults() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+	@Test(timeout=120000)
+	public void testRemoteVersionCompletionNoResults() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-version-complete-no-results.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
 		connection.languageServer.getTextDocumentService().didOpen(params);

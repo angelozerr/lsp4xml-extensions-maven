@@ -40,8 +40,8 @@ import org.eclipse.lsp4xml.dom.DOMElement;
 import org.eclipse.lsp4xml.dom.DOMNode;
 import org.eclipse.lsp4xml.dom.LineIndentInfo;
 import org.eclipse.lsp4xml.extensions.maven.searcher.ArtifactSearcherManager;
-import org.eclipse.lsp4xml.extensions.maven.searcher.ArtifactVersionSearcher;
 import org.eclipse.lsp4xml.extensions.maven.searcher.LocalRepositorySearcher;
+import org.eclipse.lsp4xml.extensions.maven.searcher.RemoteRepositoryIndexSearcher;
 import org.eclipse.lsp4xml.services.extensions.CompletionParticipantAdapter;
 import org.eclipse.lsp4xml.services.extensions.ICompletionRequest;
 import org.eclipse.lsp4xml.services.extensions.ICompletionResponse;
@@ -53,7 +53,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 	private final LocalRepositorySearcher localRepositorySearcher = new LocalRepositorySearcher();
 	private final MavenProjectCache cache;
 	private CompletableFuture<Void> indexSyncRequest;
-	ArtifactVersionSearcher artifactVersionSearcher = ArtifactVersionSearcher.getInstance();
+	RemoteRepositoryIndexSearcher artifactVersionSearcher = RemoteRepositoryIndexSearcher.getInstance();
 
 	public MavenCompletionParticipant(MavenProjectCache cache) {
 		this.cache = cache;
@@ -74,7 +74,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		if (parent == null || parent.getLocalName() == null) {
 			return;
 		}
-		//TODO: These two switch cases should be combined into one
+		// TODO: These two switch cases should be combined into one
 		if (parent.getParentElement() != null) {
 			switch (parent.getParentElement().getLocalName()) {
 			case "parent":
@@ -82,25 +82,26 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 				break;
 			case "plugin":
 				break;
+			case "dependency":
+				collectionRemoteGAVCompletion(request, response);
+				break;
 			default:
 				break;
 			}
 		}
 		switch (parent.getLocalName()) {
-		case "version":
-			if (!parent.getParentElement().getLocalName().equals("parent")){
-				collectVersionCompletion(request, response);
-			}
-			break;
 		case "scope":
-			collectSimpleCompletionItems(Arrays.asList(DependencyScope.values()), DependencyScope::getName, DependencyScope::getDescription, request, response);
+			collectSimpleCompletionItems(Arrays.asList(DependencyScope.values()), DependencyScope::getName,
+					DependencyScope::getDescription, request, response);
 			break;
 		case "phase":
-			collectSimpleCompletionItems(Arrays.asList(Phase.ALL_STANDARD_PHASES), phase -> phase.id, phase -> phase.description, request, response);
+			collectSimpleCompletionItems(Arrays.asList(Phase.ALL_STANDARD_PHASES), phase -> phase.id,
+					phase -> phase.description, request, response);
 			break;
 		case "groupId":
-			if (!parent.getParentElement().getLocalName().equals("parent")){
-				collectSimpleCompletionItems(ArtifactSearcherManager.getInstance().searchLocalGroupIds(null), Function.identity(), Function.identity(), request, response);
+			if (!parent.getParentElement().getLocalName().equals("parent")) {
+				collectSimpleCompletionItems(ArtifactSearcherManager.getInstance().searchLocalGroupIds(null),
+						Function.identity(), Function.identity(), request, response);
 			}
 			break;
 		case "module":
@@ -108,7 +109,8 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			break;
 		case "dependencies":
 			collectLocalArtifacts(request, response);
-			break;
+			// Break commented out for now so that snippets can be available
+			// break;
 		default:
 			initSnippets();
 			TextDocument document = parent.getOwnerDocument().getTextDocument();
@@ -129,7 +131,8 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 
 	private void collectLocalArtifacts(ICompletionRequest request, ICompletionResponse response) {
 		try {
-			Map<Entry<String, String>, ArtifactVersion> groupIdArtifactIdToVersion = localRepositorySearcher.getLocalArtifacts(RepositorySystem.defaultUserLocalRepository);
+			Map<Entry<String, String>, ArtifactVersion> groupIdArtifactIdToVersion = localRepositorySearcher
+					.getLocalArtifacts(RepositorySystem.defaultUserLocalRepository);
 			final DOMDocument xmlDocument = request.getXMLDocument();
 			final int requestOffset = request.getOffset();
 			int insertionOffset = requestOffset;
@@ -234,7 +237,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		}
 	}
 
-	private void collectVersionCompletion(ICompletionRequest request, ICompletionResponse response) {
+	private void collectionRemoteGAVCompletion(ICompletionRequest request, ICompletionResponse response) {
 		DOMElement node = request.getParentElement();
 		DOMDocument doc = request.getXMLDocument();
 
@@ -244,22 +247,42 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		Artifact artifactToSearch = VersionValidator.parseArtifact(node);
 		if (indexSyncRequest.isDone()) {
 			try {
-				for (String version : artifactVersionSearcher.getArtifactVersions(artifactToSearch).get()) {
-					response.addCompletionItem(toCompletionItem(version, "Artifact Version", range));
+				switch (node.getLocalName()) {
+				case "groupId":
+					if (artifactToSearch.getGroupId().equals(VersionValidator.placeholderArtifact.getGroupId())) {
+						// Don't do a remote groupId search if the user hasn't inputed anything as there
+						// will be too many results
+						return;
+					}
+					for (String groupId : artifactVersionSearcher.getGroupIds(artifactToSearch).get()) {
+						response.addCompletionItem(toCompletionItem(groupId, "GroupId", range));
+					}
+					break;
+				case "artifactId":
+					for (Map.Entry<String, String> entry : artifactVersionSearcher.getArtifactIds(artifactToSearch).get().entrySet()) {
+						response.addCompletionItem(toCompletionItem(entry.getKey(), entry.getValue(), range));
+					}
+					break;
+				case "version":
+					for (String version : artifactVersionSearcher.getArtifactVersions(artifactToSearch).get()) {
+						response.addCompletionItem(toCompletionItem(version, "Artifact Version", range));
+					}
+					break;
 				}
 			} catch (InterruptedException e) {
 				response.addCompletionItem(
-						toCompletionItem("Error: Artifact version search interrupted", "Error", range));
+						toCompletionItem("Error: Remote index search interrupted", "Error", range));
 				e.printStackTrace();
 			} catch (ExecutionException e) {
 				response.addCompletionItem(
-						toCompletionItem("Error: Artifact version search error occured", "Error", range));
+						toCompletionItem("Error: Remote index search error occured", "Error", range));
 				e.printStackTrace();
 			}
 		} else {
 			response.addCompletionItem(toCompletionItem("Updating Maven repository index...",
 					"Maven repository index update in progress", range));
 		}
+
 	}
 
 	private void collectSubModuleCompletion(ICompletionRequest request, ICompletionResponse response) {
@@ -306,16 +329,19 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			return;
 		}
 		Model model = mavenProject.getModel();
-		
+
 		switch (node.getLocalName()) {
 		case "artifactId":
-			response.addCompletionItem(toCompletionItem(model.getParent().getArtifactId(), "The artifactId of the parent maven module.", range));
+			response.addCompletionItem(toCompletionItem(model.getParent().getArtifactId(),
+					"The artifactId of the parent maven module.", range));
 			break;
 		case "groupId":
-			response.addCompletionItem(toCompletionItem(model.getParent().getGroupId(), "The groupId of the parent maven module.", range));
+			response.addCompletionItem(
+					toCompletionItem(model.getParent().getGroupId(), "The groupId of the parent maven module.", range));
 			break;
 		case "version":
-			response.addCompletionItem(toCompletionItem(model.getParent().getVersion(), "The version of the parent maven module.", range));
+			response.addCompletionItem(
+					toCompletionItem(model.getParent().getVersion(), "The version of the parent maven module.", range));
 			break;
 		default:
 			break;
@@ -323,18 +349,19 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 
 	}
 
-	private <T> void collectSimpleCompletionItems(Collection<T> items, Function<T, String> insertionTextExtractor, Function<T, String> documentationExtractor, ICompletionRequest request, ICompletionResponse response) {
+	private <T> void collectSimpleCompletionItems(Collection<T> items, Function<T, String> insertionTextExtractor,
+			Function<T, String> documentationExtractor, ICompletionRequest request, ICompletionResponse response) {
 		DOMElement node = request.getParentElement();
 		DOMDocument doc = request.getXMLDocument();
 		boolean needClosingTag = node.getEndTagOpenOffset() == DOMNode.NULL_VALUE;
-		Range range = XMLPositionUtility.createRange(node.getStartTagCloseOffset() + 1, needClosingTag ? node.getStartTagOpenOffset() + 1 : node.getEndTagOpenOffset(),
-				doc);
+		Range range = XMLPositionUtility.createRange(node.getStartTagCloseOffset() + 1,
+				needClosingTag ? node.getStartTagOpenOffset() + 1 : node.getEndTagOpenOffset(), doc);
 
 		for (T o : items) {
 			String label = insertionTextExtractor.apply(o);
 			CompletionItem item = new CompletionItem();
 			item.setLabel(label);
-			String insertText = label + (needClosingTag ? "</" + node.getTagName() + ">": "");
+			String insertText = label + (needClosingTag ? "</" + node.getTagName() + ">" : "");
 			item.setKind(CompletionItemKind.Property);
 			item.setDocumentation(Either.forLeft(documentationExtractor.apply(o)));
 			item.setFilterText(insertText);
@@ -345,17 +372,18 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 	}
 
 	/**
-	 * CompletionItem
 	 * Utility function, takes a label string, description and range and returns a
+	 * CompletionItem
 	 * 
 	 * @param description Completion description
 	 * @param label       Completion label
 	 * @return CompletionItem resulting from the label, description and range given
-	 * @param range       Range where the completion will be inserted
+	 * @param range Range where the completion will be inserted
 	 */
 	private static CompletionItem toCompletionItem(String label, String description, Range range) {
 		CompletionItem item = new CompletionItem();
 		item.setLabel(label);
+		item.setSortText(label);
 		item.setKind(CompletionItemKind.Property);
 		String insertText = label;
 		item.setDocumentation(Either.forLeft(description));
