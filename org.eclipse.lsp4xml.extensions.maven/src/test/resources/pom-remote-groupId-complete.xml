@@ -9,9 +9,9 @@
 
 	<dependencies>
 		<dependency>
-			<groupId>org.apache.maven</groupId>
-			<artifactId>maven-artifact</artifactId>
-			<version>3.6.3 </version>
+			<groupId>com.goo</groupId>
+			<artifactId></artifactId>
+			<version></version>
 		</dependency>
 	</dependencies>
 	

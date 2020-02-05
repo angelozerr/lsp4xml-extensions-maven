@@ -21,6 +21,7 @@ import org.codehaus.plexus.classworlds.realm.ClassRealm;
 import org.codehaus.plexus.classworlds.realm.NoSuchRealmException;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4xml.dom.DOMDocument;
+import org.eclipse.lsp4xml.extensions.maven.searcher.RemoteRepositoryIndexSearcher;
 import org.eclipse.lsp4xml.services.extensions.ICompletionParticipant;
 import org.eclipse.lsp4xml.services.extensions.IXMLExtension;
 import org.eclipse.lsp4xml.services.extensions.XMLExtensionsRegistry;
@@ -104,6 +105,7 @@ public class MavenPlugin implements IXMLExtension {
 		registry.unregisterDiagnosticsParticipant(diagnosticParticipant);
 		cache = null;
 		container = null;
+		RemoteRepositoryIndexSearcher.getInstance().closeContext();
 	}
 
 	public static boolean match(DOMDocument document) {
