@@ -23,6 +23,7 @@ import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4xml.dom.DOMDocument;
 import org.eclipse.lsp4xml.extensions.maven.searcher.RemoteRepositoryIndexSearcher;
 import org.eclipse.lsp4xml.services.extensions.ICompletionParticipant;
+import org.eclipse.lsp4xml.services.extensions.IHoverParticipant;
 import org.eclipse.lsp4xml.services.extensions.IXMLExtension;
 import org.eclipse.lsp4xml.services.extensions.XMLExtensionsRegistry;
 import org.eclipse.lsp4xml.services.extensions.diagnostics.IDiagnosticsParticipant;
@@ -42,6 +43,7 @@ public class MavenPlugin implements IXMLExtension {
 
 	private ICompletionParticipant completionParticipant;
 	private IDiagnosticsParticipant diagnosticParticipant;
+	private IHoverParticipant hoverParticipant;
 	private PlexusContainer container;
 	private MavenProjectCache cache;
 
@@ -65,6 +67,8 @@ public class MavenPlugin implements IXMLExtension {
 		registry.registerCompletionParticipant(completionParticipant);
 		diagnosticParticipant = new MavenDiagnosticParticipant(cache);
 		registry.registerDiagnosticsParticipant(diagnosticParticipant);
+		hoverParticipant = new MavenHoverParticipant();
+		registry.registerHoverParticipant(hoverParticipant);
 	}
 
 	/* Copied from m2e */
