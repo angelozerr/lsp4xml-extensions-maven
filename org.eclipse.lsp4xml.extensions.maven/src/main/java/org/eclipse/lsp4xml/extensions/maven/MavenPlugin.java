@@ -10,6 +10,7 @@
  */
 package org.eclipse.lsp4xml.extensions.maven;
 
+import org.apache.maven.Maven;
 import org.codehaus.plexus.ContainerConfiguration;
 import org.codehaus.plexus.DefaultContainerConfiguration;
 import org.codehaus.plexus.DefaultPlexusContainer;
@@ -34,16 +35,14 @@ import org.eclipse.lsp4xml.services.extensions.save.ISaveContext;
  */
 public class MavenPlugin implements IXMLExtension {
 
-	private static final String POM_XML = "pom.xml";
-
 	private static final String MAVEN_XMLLS_EXTENSION_REALM_ID = MavenPlugin.class.getName();
 	
-	public static final String DEFAULT_LOCAL_REPOSITORY_PATH = System.getProperty("user.home") + "/.m2/repository";
-
 	private ICompletionParticipant completionParticipant;
 	private IDiagnosticsParticipant diagnosticParticipant;
 	private PlexusContainer container;
 	private MavenProjectCache cache;
+
+	private RemoteRepositoryIndexSearcher indexSearcher;
 
 	public MavenPlugin() {
 	}
@@ -61,7 +60,9 @@ public class MavenPlugin implements IXMLExtension {
 		} catch (PlexusContainerException e) {
 			e.printStackTrace();
 		}
-		completionParticipant = new MavenCompletionParticipant(cache);
+		indexSearcher = new RemoteRepositoryIndexSearcher(container);
+		cache.addProjectParsedListener(indexSearcher::updateKnownRepositories);
+		completionParticipant = new MavenCompletionParticipant(cache, indexSearcher);
 		registry.registerCompletionParticipant(completionParticipant);
 		diagnosticParticipant = new MavenDiagnosticParticipant(cache);
 		registry.registerDiagnosticsParticipant(diagnosticParticipant);
@@ -103,12 +104,14 @@ public class MavenPlugin implements IXMLExtension {
 	public void stop(XMLExtensionsRegistry registry) {
 		registry.unregisterCompletionParticipant(completionParticipant);
 		registry.unregisterDiagnosticsParticipant(diagnosticParticipant);
+		indexSearcher.closeContext();
+		indexSearcher = null;
 		cache = null;
+		container.dispose();
 		container = null;
-		RemoteRepositoryIndexSearcher.getInstance().closeContext();
 	}
 
 	public static boolean match(DOMDocument document) {
-		return document.getDocumentURI().endsWith(POM_XML);
+		return document.getDocumentURI().endsWith(Maven.POMv4);
 	}
 }

@@ -16,7 +16,9 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import org.apache.maven.artifact.InvalidRepositoryException;
 import org.apache.maven.artifact.repository.ArtifactRepository;
@@ -53,6 +55,8 @@ public class MavenProjectCache {
 	private RepositorySystem repositorySystem;
 	private ArtifactRepository localRepo;
 
+	private final List<Consumer<MavenProject>> projectParsedListeners = new ArrayList<>();
+
 	public MavenProjectCache(PlexusContainer container) {
 		this.plexusContainer = container;
 		this.lastCheckedVersion = new HashMap<URI, Integer>();
@@ -88,7 +92,7 @@ public class MavenProjectCache {
 		Integer last = lastCheckedVersion.get(URI.create(document.getTextDocument().getUri()));
 		if (last == null || last.intValue() < document.getTextDocument().getVersion()) {
 			parse(document);
-			MavenRepositoryCache.getInstance().update(getLastSuccessfulMavenProject(document));
+
 		}
 	}
 
@@ -110,6 +114,7 @@ public class MavenProjectCache {
 			problems.addAll(buildResult.getProblems());
 			if (buildResult.getProject() != null) {
 				projectCache.put(uri, buildResult.getProject());
+				projectParsedListeners.forEach(listener -> listener.accept(buildResult.getProject()));
 			}
 		} catch (ProjectBuildingException e) {
 			if (e.getResults() == null) {
@@ -126,6 +131,7 @@ public class MavenProjectCache {
 					MavenProject project = e.getResults().get(0).getProject();
 					if (project != null) {
 						projectCache.put(uri, e.getResults().get(0).getProject());
+						projectParsedListeners.forEach(listener -> listener.accept(project));
 					}
 				}
 			}
@@ -163,6 +169,10 @@ public class MavenProjectCache {
 
 	public PlexusContainer getPlexusContainer() {
 		return plexusContainer;
+	}
+
+	public void addProjectParsedListener(Consumer<MavenProject> listener) {
+		this.projectParsedListeners.add(listener);
 	}
 
 }
