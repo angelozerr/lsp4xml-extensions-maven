@@ -122,6 +122,12 @@ public class MavenProjectCache {
 				}
 			} else {
 				e.getResults().stream().flatMap(result -> result.getProblems().stream()).forEach(problems::add);
+				if (e.getResults().size() == 1) {
+					MavenProject project = e.getResults().get(0).getProject();
+					if (project != null) {
+						projectCache.put(uri, e.getResults().get(0).getProject());
+					}
+				}
 			}
 		} catch (ComponentLookupException | IOException | InvalidRepositoryException e) {
 			// TODO Auto-generated catch block
