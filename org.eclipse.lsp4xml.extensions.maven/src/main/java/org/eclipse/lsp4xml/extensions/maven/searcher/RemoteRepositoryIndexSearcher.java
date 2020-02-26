@@ -1,25 +1,38 @@
+/*******************************************************************************
+ * Copyright (c) 2019-2020 Red Hat Inc. and others.
+ * This program and the accompanying materials are made
+ * available under the terms of the Eclipse Public License 2.0
+ * which is available at https://www.eclipse.org/legal/epl-2.0/
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *******************************************************************************/
 package org.eclipse.lsp4xml.extensions.maven.searcher;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
 
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.Query;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.index.ArtifactInfo;
-import org.apache.maven.index.ArtifactInfoFilter;
 import org.apache.maven.index.Indexer;
 import org.apache.maven.index.IteratorSearchRequest;
 import org.apache.maven.index.IteratorSearchResponse;
@@ -32,109 +45,88 @@ import org.apache.maven.index.updater.IndexUpdateResult;
 import org.apache.maven.index.updater.IndexUpdater;
 import org.apache.maven.index.updater.ResourceFetcher;
 import org.apache.maven.index.updater.WagonHelper;
+import org.apache.maven.model.Model;
+import org.apache.maven.project.MavenProject;
+import org.apache.maven.repository.RepositorySystem;
 import org.apache.maven.wagon.Wagon;
 import org.apache.maven.wagon.events.TransferEvent;
-import org.apache.maven.wagon.events.TransferListener;
 import org.apache.maven.wagon.observers.AbstractTransferListener;
 import org.codehaus.plexus.PlexusContainer;
-import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
 import org.eclipse.aether.repository.RemoteRepository;
-import org.eclipse.aether.util.version.GenericVersionScheme;
-import org.eclipse.aether.version.Version;
-import org.eclipse.lsp4xml.extensions.maven.MavenPlugin;
-import org.eclipse.lsp4xml.extensions.maven.MavenRepositoryCache;
 
 public class RemoteRepositoryIndexSearcher {
 	public static final int COMPARISON_TYPE_GREATER = 1; // 0001
 	public static final int COMPARISON_TYPE_LESS = 2; // 0010
 	public static final int COMPARISON_TYPE_EQUALS = 4; // 0100
 
-	private static final RemoteRepositoryIndexSearcher INSTANCE = new RemoteRepositoryIndexSearcher();
-
+	private static final RemoteRepository CENTRAL_REPO = new RemoteRepository.Builder("central", "default", "https://repo.maven.apache.org/maven2/").build();
+	private final Set<RemoteRepository> knownRepositories;
+	
 	private Indexer indexer;
 
 	private IndexUpdater indexUpdater;
 
+	private ResourceFetcher resourceFetcher;
+
 	private List<IndexCreator> indexers = new ArrayList<>();
 
-	private String indexPath;
+	private File indexPath;
 
-	private Wagon httpWagon;
+	private Map<URI, IndexingContext> indexingContexts = new HashMap<>();
+	private Map<IndexingContext, CompletableFuture<IndexingContext>> indexDownloadJobs = new HashMap<>();
 
-	private HashMap<String, IndexingContext> indexingContexts = new HashMap<>();
-
-	private Set<String> artifactVersions = Collections.synchronizedSet(new HashSet<String>());
-
-	private Map<String, String> artifactIds = new ConcurrentHashMap<>();
-
-	private Set<String> groupIds = Collections.synchronizedSet(new HashSet<String>());
-
-	private CompletableFuture<Void> syncRequest;
-
-	private Set<String> brokenContexts = Collections.synchronizedSet(new HashSet<String>());
-
-	private RemoteRepositoryIndexSearcher() {
-	}
-
-	public static RemoteRepositoryIndexSearcher getInstance() {
-		return INSTANCE;
-	}
-
-	/**
-	 * Returns a Maven index sync request in a CompletableFuture. This function must
-	 * be called before this class can be used, and the returned CompletableFuture
-	 * must be run for the maven indexer to work correctly.
-	 * 
-	 * @param plexusContainer
-	 * @return CompletableFuture<Void> syncRequest - must be run in order to update
-	 *         the Maven index before use
-	 * @throws ComponentLookupException
-	 */
-	public CompletableFuture<Void> init(PlexusContainer plexusContainer) throws ComponentLookupException {
-		if (syncRequest == null) {
+	public RemoteRepositoryIndexSearcher(PlexusContainer plexusContainer) {
+		try {
 			indexer = plexusContainer.lookup(Indexer.class);
 			indexUpdater = plexusContainer.lookup(IndexUpdater.class);
-			httpWagon = plexusContainer.lookup(Wagon.class, "http");
+			resourceFetcher = new WagonHelper.WagonFetcher(plexusContainer.lookup(Wagon.class, "http"), new AbstractTransferListener() {
+				@Override
+				public void transferStarted(TransferEvent transferEvent) {
+					System.out.println("Downloading " + transferEvent.getResource().getName());
+				}
+
+				@Override
+				public void transferProgress(TransferEvent transferEvent, byte[] buffer, int length) {
+				}
+
+				@Override
+				public void transferCompleted(TransferEvent transferEvent) {
+					System.out.println("Done downloading " + transferEvent.getResource().getName());
+				}
+			}, null, null);
 			indexers.add(plexusContainer.lookup(IndexCreator.class, "min"));
 			indexers.add(plexusContainer.lookup(IndexCreator.class, "jarContent"));
 			indexers.add(plexusContainer.lookup(IndexCreator.class, "maven-plugin"));
-			String pathSeperator = System.getProperty("file.separator");
-			this.indexPath = MavenPlugin.DEFAULT_LOCAL_REPOSITORY_PATH + pathSeperator + "_maven_index_"
-					+ pathSeperator;
-
-			syncRequest = syncIndex();
-		}
-		return syncRequest;
-	}
-
-	public CompletableFuture<Void> syncIndex() {
-		try {
-			boolean contextInitialized = true;
-			for (RemoteRepository repo : MavenRepositoryCache.getInstance().getRemoteRepositories()) {
-				if (!indexingContexts.containsKey(repo.getId()) && !brokenContexts.contains(repo.getId())) {
-					contextInitialized = false;
-				}
-			}
-
-			if (!contextInitialized) {
-				initializeContext();
-				// TODO: Index should be updated if context isin't initialized, as a new
-				// repository might have been added
-			}
-			return updateIndex().handleAsync((a, b) -> {
-				if (b != null) {
-					b.printStackTrace();
-				}
-				return a;
-			});
-
 		} catch (Exception e) {
 			e.printStackTrace();
-			return null;
+		}
+		this.knownRepositories = new HashSet<>();
+		knownRepositories.add(CENTRAL_REPO);
+		this.indexPath = new File(RepositorySystem.defaultUserLocalRepository.getAbsolutePath(), "_maven_index_");
+		indexPath.mkdirs();
+		knownRepositories.stream().map(RemoteRepository::getUrl).map(URI::create).forEach(this::getIndexingContext);
+		// TODO knownRepositories.addAll(readRepositoriesFromSettings());
+	}
+
+	public CompletableFuture<IndexingContext> getIndexingContext(URI repositoryUrl) {
+//		if (!repositoryUrl.toString().endsWith("/")) {
+//			repositoryUrl = URI.create(repositoryUrl.toString() + "/");
+//		}
+		synchronized (indexingContexts) {
+			IndexingContext res = indexingContexts.get(repositoryUrl);
+			if (res != null && indexDownloadJobs.containsKey(res)) {
+				final IndexingContext context = res;
+				return indexDownloadJobs.get(res).thenApply(theVoid -> context);
+			}
+			final IndexingContext context = initializeContext(repositoryUrl);
+			indexingContexts.put(repositoryUrl, context);
+			CompletableFuture<IndexingContext> future = updateIndex(context).thenApply(theVoid -> context);
+			indexDownloadJobs.put(context, future);
+			return future;
 		}
 	}
 
-	public CompletableFuture<Set<String>> getArtifactVersions(Artifact artifactToSearch) {
+	public Set<String> getArtifactVersions(Artifact artifactToSearch, IndexingContext... requestSpecificContexts) {
 		// final BooleanQuery query = createArtifactVersionQuery(artifactToSearch);
 		final Query groupIdQ = indexer.constructQuery(MAVEN.GROUP_ID, artifactToSearch.getGroupId(), SearchType.EXACT);
 		final Query artifactIdQ = indexer.constructQuery(MAVEN.ARTIFACT_ID, artifactToSearch.getArtifactId(),
@@ -144,212 +136,156 @@ public class RemoteRepositoryIndexSearcher {
 		final BooleanQuery query = new BooleanQuery.Builder().add(groupIdQ, Occur.MUST).add(artifactIdQ, Occur.SHOULD)
 				.add(jarPackagingQ, Occur.MUST).build();
 
-		List<IndexingContext> contexts = new ArrayList<>();
-		contexts.addAll(indexingContexts.values());
+		List<IndexingContext> contexts = Collections.unmodifiableList(requestSpecificContexts != null && requestSpecificContexts.length > 0 ?
+				Arrays.asList(requestSpecificContexts) :
+				new LinkedList<>(indexingContexts.values()));
 		final IteratorSearchRequest request = new IteratorSearchRequest(query, contexts, null);
 
-		final CompletableFuture<List<ArtifactInfo>> artifactInfoResults = createIndexerQuery(artifactToSearch, request);
-
-		return artifactInfoResults.thenApply(artifactInfos -> {
-			artifactVersions.clear();
-			if (!artifactInfos.isEmpty()) {
-				artifactInfos.forEach(info -> artifactVersions.add(info.getVersion()));
-			} else {
-				String noResults = "No artifact versions found.";
-				artifactVersions.add(noResults);
-			}
-			return artifactVersions;
-		});
+		return createIndexerQuery(artifactToSearch, request).stream().map(ArtifactInfo::getVersion).collect(Collectors.toSet());
 	}
 
 	/**
 	 * @param artifactToSearch a CompletableFuture containing a {@code Map<String artifactId, String artifactDescription>} 
 	 * @return
 	 */
-	public CompletableFuture<Map<String, String>> getArtifactIds(Artifact artifactToSearch) {
+	public Collection<ArtifactInfo> getArtifactIds(Artifact artifactToSearch, IndexingContext... requestSpecificContexts) {
 		final Query groupIdQ = indexer.constructQuery(MAVEN.GROUP_ID, artifactToSearch.getGroupId(), SearchType.SCORED);
 		final Query jarPackagingQ = indexer.constructQuery(MAVEN.PACKAGING, "jar", SearchType.EXACT);
 		final BooleanQuery query = new BooleanQuery.Builder().add(groupIdQ, Occur.MUST).add(jarPackagingQ, Occur.MUST)
 				.build();
-		List<IndexingContext> contexts = new ArrayList<>();
-		contexts.addAll(indexingContexts.values());
+		List<IndexingContext> contexts = Collections.unmodifiableList(requestSpecificContexts != null && requestSpecificContexts.length > 0 ?
+				Arrays.asList(requestSpecificContexts) :
+				new LinkedList<>(indexingContexts.values()));
 		final IteratorSearchRequest request = new IteratorSearchRequest(query, contexts, null);
-
-		final CompletableFuture<List<ArtifactInfo>> artifactInfoResults = createIndexerQuery(artifactToSearch, request);
-
-		return artifactInfoResults.thenApply(artifactInfos -> {
-			artifactIds.clear();
-			if (!artifactInfos.isEmpty()) {
-				artifactInfos.forEach(info -> artifactIds.put(info.getArtifactId(),
-						info.getDescription() != null ? info.getDescription() : "No description found."));
-			} else {
-				String noResults = "No artifacts found.";
-				artifactIds.put(noResults, "");
-			}
-			return artifactIds;
-		});
+		return createIndexerQuery(artifactToSearch, request);
 	}
 
 	// TODO: Get groupid description for completion
-	public CompletableFuture<Set<String>> getGroupIds(Artifact artifactToSearch) {
+	public Set<String> getGroupIds(Artifact artifactToSearch, IndexingContext... requestSpecificContexts) {
 		final Query groupIdQ = indexer.constructQuery(MAVEN.GROUP_ID, artifactToSearch.getGroupId(), SearchType.SCORED);
 		final Query jarPackagingQ = indexer.constructQuery(MAVEN.PACKAGING, "jar", SearchType.EXACT);
 		final BooleanQuery query = new BooleanQuery.Builder().add(groupIdQ, Occur.MUST).add(jarPackagingQ, Occur.MUST)
 				.build();
-		List<IndexingContext> contexts = new ArrayList<>();
-		contexts.addAll(indexingContexts.values());
+		List<IndexingContext> contexts = Collections.unmodifiableList(requestSpecificContexts != null && requestSpecificContexts.length > 0 ?
+				Arrays.asList(requestSpecificContexts) :
+				new LinkedList<>(indexingContexts.values()));
 		final IteratorSearchRequest request = new IteratorSearchRequest(query, contexts, null);
 		// TODO: Find the Count sweet spot
 		request.setCount(7500);
 
-		final CompletableFuture<List<ArtifactInfo>> artifactInfoResults = createIndexerQuery(artifactToSearch, request);
-
-		return artifactInfoResults.thenApply(artifactInfos -> {
-			groupIds.clear();
-			if (!artifactInfos.isEmpty()) {
-				artifactInfos.forEach(info -> groupIds.add(info.getGroupId()));
-			} else {
-				String noResults = "No groupId's found.";
-				groupIds.add(noResults);
-			}
-			return groupIds;
-		});
+		return createIndexerQuery(artifactToSearch, request).stream().map(ArtifactInfo::getGroupId).collect(Collectors.toSet());
 	}
 
-	// TODO: Remove print statements? Maybe send notices over JSON RPC?
-	TransferListener listener = new AbstractTransferListener() {
-		@Override
-		public void transferStarted(TransferEvent transferEvent) {
-			System.out.println("Downloading " + transferEvent.getResource().getName());
+	private CompletableFuture<Void> updateIndex(IndexingContext context) {
+		if (context == null) {
+			return CompletableFuture.runAsync(() -> { throw new IllegalArgumentException("context mustn't be null"); });
 		}
+		System.out.println("Updating Index for " + context.getRepositoryUrl() + "...");
+		Date contextCurrentTimestamp = context.getTimestamp();
+		IndexUpdateRequest updateRequest = new IndexUpdateRequest(context, resourceFetcher);
+		return CompletableFuture.runAsync(() -> {
 
-		@Override
-		public void transferProgress(TransferEvent transferEvent, byte[] buffer, int length) {
-		}
-
-		@Override
-		public void transferCompleted(TransferEvent transferEvent) {
-			System.out.println("Done downloading " + transferEvent.getResource().getName());
-		}
-	};
-
-	private CompletableFuture<Void> updateIndex() {
-		System.out.println("Updating Index...");
-		ResourceFetcher resourceFetcher = new WagonHelper.WagonFetcher(httpWagon, listener, null, null);
-
-		indexingContexts.keySet().removeIf(repoID -> brokenContexts.contains(repoID));
-		List<CompletableFuture<Void>> futures = new ArrayList<>();
-		for (Entry<String, IndexingContext> context : indexingContexts.entrySet()) {
-			Date contextCurrentTimestamp = context.getValue().getTimestamp();
-			IndexUpdateRequest updateRequest = new IndexUpdateRequest(context.getValue(), resourceFetcher);
-			final CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-
-				try {
-					IndexUpdateResult updateResult = indexUpdater.fetchAndUpdateIndex(updateRequest);
+			try {
+				IndexUpdateResult updateResult = indexUpdater.fetchAndUpdateIndex(updateRequest);
+				if (updateResult.isSuccessful()) {
+					System.out.println("Update successful for " + context.getRepositoryUrl());
 					if (updateResult.isFullUpdate()) {
 						System.out.println("Full update happened!");
-					} else if (updateResult.getTimestamp().equals(contextCurrentTimestamp)) {
+					} else if (contextCurrentTimestamp.equals(updateResult.getTimestamp())) {
 						System.out.println("No update needed, index is up to date!");
 					} else {
 						System.out.println("Incremental update happened, change covered " + contextCurrentTimestamp
 								+ " - " + updateResult.getTimestamp() + " period.");
 					}
-				} catch (IOException e) {
-					// TODO: Fix this - the maven central context gets reported as broken when
-					// another context is broken
-					brokenContexts.add(context.getKey());
-					System.out.println("Invalid Context: " + context.getValue().getRepositoryId() + " @ "
-							+ context.getValue().getRepositoryUrl());
-					e.printStackTrace();
-					// TODO: Maybe scan for maven metadata to use as an alternative to retrieve GAV
+				} else {
+					System.err.println("Index update failed for " + context.getRepositoryUrl());
 				}
-			});
-			futures.add(future);
-		}
-
-		return CompletableFuture.allOf(futures.toArray(new CompletableFuture[futures.size()]));
+			} catch (IOException e) {
+				// TODO: Fix this - the maven central context gets reported as broken when
+				// another context is broken
+				indexDownloadJobs.remove(context);
+				System.err.println("Invalid Context: " + context.getRepositoryId() + " @ "
+						+ context.getRepositoryUrl());
+				e.printStackTrace();
+				// TODO: Maybe scan for maven metadata to use as an alternative to retrieve GAV
+			}
+		});
 	}
 
-	private void initializeContext() throws IOException {
-		File targetDirectory = new File(indexPath);
-		if (!targetDirectory.exists()) {
-			targetDirectory.mkdirs();
+	private IndexingContext initializeContext(URI repoUrl) {
+		String fileSystemFriendlyName = repoUrl.getHost() + repoUrl.hashCode();
+		File repoFile = new File(indexPath + fileSystemFriendlyName + "-cache");
+		File repoIndex = new File(indexPath + fileSystemFriendlyName + "-index");
+		try {
+			return indexer.createIndexingContext(repoUrl.toString(), repoUrl.toString(),
+					repoFile, repoIndex, repoUrl.toString(), null, true, true, indexers);
+		} catch (Exception e) {
+			e.printStackTrace();
 		}
-
-		for (RemoteRepository repo : MavenRepositoryCache.getInstance().getRemoteRepositories()) {
-			File repoFile = new File(indexPath + repo.getId() + "-cache");
-			File repoIndex = new File(indexPath + repo.getId() + "-index");
-			try {
-				IndexingContext context = indexer.createIndexingContext(repo.getId() + "-context", repo.getId(),
-						repoFile, repoIndex, repo.getUrl(), null, true, true, indexers);
-				indexingContexts.put(repo.getId(), context);
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-
-		}
-
+		return null;
 	}
 
 	public void closeContext() {
 		for (IndexingContext context : indexingContexts.values()) {
 			try {
 				indexer.closeIndexingContext(context, false);
+				CompletableFuture<?> download = indexDownloadJobs.get(context);
+				if (!download.isDone()) {
+					download.cancel(true);
+				}
 			} catch (IOException e) {
 				System.out.println("Warning - could not close context: " + context.getId());
 				e.printStackTrace();
 			}
 		}
-
+		indexingContexts.clear();
+		indexDownloadJobs.clear();
 	}
 
-//////////////////////////////////// Helper Methods ///////////////////////////////////////////////
+	public void updateKnownRepositories(MavenProject project) {
+		if (project == null || project.getModel() == null) {
+			return;
 
-	private CompletableFuture<List<ArtifactInfo>> createIndexerQuery(Artifact artifactToSearch,
-			final IteratorSearchRequest request) {
-		return CompletableFuture.supplyAsync(() -> {
-			IteratorSearchResponse response = null;
-			try {
-				response = indexer.searchIterator(request);
-			} catch (IOException e) {
-				System.out.println("Index search failed for " + String.join(":", artifactToSearch.getGroupId(),
-						artifactToSearch.getArtifactId(), artifactToSearch.getVersion()));
-				e.printStackTrace();
-			}
-			List<ArtifactInfo> artifactInfos = new ArrayList<>();
-			if (response != null) {
-				response.getResults().forEach(artifactInfos::add);
-			}
-			return artifactInfos;
-		});
-	}
+		}
+		Model model = project.getModel();
 
-	private ArtifactInfoFilter createVersionFilter(String versionToCompare, int comparisonType) {
-		final GenericVersionScheme versionScheme = new GenericVersionScheme();
-
-		return (ctx, ai) -> {
-			try {
-				final Version aiV = versionScheme.parseVersion(ai.getVersion());
-				final Version version = versionScheme.parseVersion(versionToCompare);
-				int comparisonResult = aiV.compareTo(version);
-
-				switch (comparisonType) {
-				case (RemoteRepositoryIndexSearcher.COMPARISON_TYPE_EQUALS):
-					return comparisonResult == 0;
-				case (RemoteRepositoryIndexSearcher.COMPARISON_TYPE_GREATER):
-					return comparisonResult >= 0;
-				case (RemoteRepositoryIndexSearcher.COMPARISON_TYPE_LESS):
-					return comparisonResult <= 0;
-				default:
-					// should never get here
-					throw new IllegalArgumentException(
-							"comparisonType argument must be one of COMPARISON_TYPE_EQUALS COMPARISON_TYPE_GREATER COMPARISON_TYPE_LESS");
+		knownRepositories.addAll(model.getRepositories().stream()
+				.map(repo -> new RemoteRepository.Builder(repo.getId(), repo.getLayout(), repo.getUrl()).build())
+				.distinct().collect(Collectors.toList()));
+		Deque<MavenProject> parentHierarchy = new ArrayDeque<>();
+		if (model.getParent() != null) {
+			parentHierarchy.add(project.getParent());
+			while (!parentHierarchy.isEmpty()) {
+				MavenProject currentParentProj = parentHierarchy.pop();
+				if (currentParentProj.getParent() != null) {
+					Model parentModel = currentParentProj.getParent().getModel();
+					knownRepositories.addAll(parentModel.getRepositories().stream()
+							.map(repo -> new RemoteRepository.Builder(repo.getId(), repo.getLayout(), repo.getUrl())
+									.build())
+							.distinct().collect(Collectors.toList()));
+					parentHierarchy.add(currentParentProj.getParent());
 				}
-
-			} catch (org.eclipse.aether.version.InvalidVersionSpecificationException e) {
-				e.printStackTrace();
-				return false;
 			}
-		};
+		}
+
+		// TODO: get repositories from maven user and global settings.xml
 	}
+
+
+	private List<ArtifactInfo> createIndexerQuery(Artifact artifactToSearch, final IteratorSearchRequest request) {
+		IteratorSearchResponse response = null;
+		try {
+			response = indexer.searchIterator(request);
+		} catch (IOException e) {
+			System.out.println("Index search failed for " + String.join(":", artifactToSearch.getGroupId(),
+					artifactToSearch.getArtifactId(), artifactToSearch.getVersion()));
+			e.printStackTrace();
+		}
+		List<ArtifactInfo> artifactInfos = new ArrayList<>();
+		if (response != null) {
+			response.getResults().forEach(artifactInfos::add);
+		}
+		return artifactInfos;
+	}
+
 }

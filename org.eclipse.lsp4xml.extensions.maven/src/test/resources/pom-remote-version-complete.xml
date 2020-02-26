@@ -9,10 +9,17 @@
 
 	<dependencies>
 		<dependency>
-			<groupId>com.google.android</groupId>
-			<artifactId>android</artifactId>
-			<version>4.1.1.4</version>
+			<groupId>signaturacaib</groupId>
+			<artifactId>signaturacaib.core</artifactId>
+			<version>a</version>
 		</dependency>
 	</dependencies>
-	
+
+	<repositories>
+		<repository>
+			<id>soffid</id>
+			<layout>m2</layout>
+			<url>http://www.soffid.com/maven/</url>
+		</repository>
+	</repositories>	
 </project>

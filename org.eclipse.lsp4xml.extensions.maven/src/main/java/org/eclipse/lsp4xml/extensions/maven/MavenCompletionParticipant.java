@@ -9,9 +9,12 @@
 package org.eclipse.lsp4xml.extensions.maven;
 
 import java.io.IOException;
+import java.net.URI;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.CompletableFuture;
@@ -20,12 +23,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 
+import org.apache.maven.Maven;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.versioning.ArtifactVersion;
 import org.apache.maven.model.Model;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.repository.RepositorySystem;
-import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
 import org.eclipse.lsp4j.InsertTextFormat;
@@ -52,19 +55,12 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 	private boolean snippetsLoaded;
 	private final LocalRepositorySearcher localRepositorySearcher = new LocalRepositorySearcher();
 	private final MavenProjectCache cache;
+	private final RemoteRepositoryIndexSearcher indexSearcher;
 	private CompletableFuture<Void> indexSyncRequest;
-	RemoteRepositoryIndexSearcher artifactVersionSearcher = RemoteRepositoryIndexSearcher.getInstance();
 
-	public MavenCompletionParticipant(MavenProjectCache cache) {
+	public MavenCompletionParticipant(MavenProjectCache cache, RemoteRepositoryIndexSearcher indexSearcher) {
 		this.cache = cache;
-
-		try {
-			indexSyncRequest = artifactVersionSearcher.init(cache.getPlexusContainer());
-			indexSyncRequest.get(500, TimeUnit.MILLISECONDS);
-		} catch (ComponentLookupException | InterruptedException | ExecutionException | TimeoutException e) {
-			e.printStackTrace();
-		}
-
+		this.indexSearcher = indexSearcher;
 	}
 
 	@Override
@@ -118,7 +114,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			boolean canSupportMarkdown = true; // request.canSupportMarkupKind(MarkupKind.MARKDOWN);
 			SnippetRegistry.getInstance()
 					.getCompletionItems(document, completionOffset, canSupportMarkdown, context -> {
-						if (!"pom.xml".equals(context.getType())) {
+						if (!Maven.POMv4.equals(context.getType())) {
 							return false;
 						}
 						return parent.getLocalName().equals(context.getValue());
@@ -245,44 +241,45 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 				doc);
 
 		Artifact artifactToSearch = VersionValidator.parseArtifact(node);
-		if (indexSyncRequest.isDone()) {
-			try {
-				switch (node.getLocalName()) {
-				case "groupId":
-					if (artifactToSearch.getGroupId().equals(VersionValidator.placeholderArtifact.getGroupId())) {
-						// Don't do a remote groupId search if the user hasn't inputed anything as there
-						// will be too many results
-						return;
-					}
-					for (String groupId : artifactVersionSearcher.getGroupIds(artifactToSearch).get()) {
-						response.addCompletionItem(toCompletionItem(groupId, "GroupId", range));
-					}
-					break;
-				case "artifactId":
-					for (Map.Entry<String, String> entry : artifactVersionSearcher.getArtifactIds(artifactToSearch).get().entrySet()) {
-						response.addCompletionItem(toCompletionItem(entry.getKey(), entry.getValue(), range));
-					}
-					break;
-				case "version":
-					for (String version : artifactVersionSearcher.getArtifactVersions(artifactToSearch).get()) {
-						response.addCompletionItem(toCompletionItem(version, "Artifact Version", range));
-					}
-					break;
-				}
-			} catch (InterruptedException e) {
-				response.addCompletionItem(
-						toCompletionItem("Error: Remote index search interrupted", "Error", range));
-				e.printStackTrace();
-			} catch (ExecutionException e) {
-				response.addCompletionItem(
-						toCompletionItem("Error: Remote index search error occured", "Error", range));
-				e.printStackTrace();
-			}
-		} else {
-			response.addCompletionItem(toCompletionItem("Updating Maven repository index...",
-					"Maven repository index update in progress", range));
+		MavenProject project = cache.getLastSuccessfulMavenProject(doc);
+		if (project == null) {
+			return;
 		}
-
+		Collection<CompletionItem> items = Collections.synchronizedSet(new LinkedHashSet<>());
+		try {
+			CompletableFuture.allOf(project.getRemoteArtifactRepositories().stream().map(repository -> {
+				final CompletionItem updatingItem = new CompletionItem("Updating index for " + repository.getUrl());
+				items.add(updatingItem);
+				return indexSearcher
+					.getIndexingContext(URI.create(repository.getUrl()))
+					.thenAccept(index -> {
+							switch (node.getLocalName()) {
+							case "groupId":
+								if (artifactToSearch.getGroupId().equals(VersionValidator.placeholderArtifact.getGroupId())) {
+									// Don't do a remote groupId search if the user hasn't inputed anything as there
+									// will be too many results
+									return;
+								}
+								indexSearcher.getGroupIds(artifactToSearch, index)
+										.stream().map(groupId -> toCompletionItem(groupId, "GroupId", range)).forEach(items::add);
+								return;
+							case "artifactId":
+								indexSearcher.getArtifactIds(artifactToSearch, index).stream().map(artifactInfo -> toCompletionItem(artifactInfo.getArtifactId(), artifactInfo.getDescription(), range)).forEach(items::add);
+								return;
+							case "version":
+								indexSearcher.getArtifactVersions(artifactToSearch, index).stream().map(version -> toCompletionItem(version, "Artifact Version", range)).forEach(items::add);
+								return;
+							}
+					}).whenComplete((ok, error) -> {
+						items.remove(updatingItem);
+					});
+			}).toArray(CompletableFuture<?>[]::new)).get(2, TimeUnit.SECONDS);
+		} catch (InterruptedException | ExecutionException exception) {
+			exception.printStackTrace();
+		} catch (TimeoutException e) {
+			// nothing to log, some work still pending
+		}
+		items.forEach(response::addCompletionItem);
 	}
 
 	private void collectSubModuleCompletion(ICompletionRequest request, ICompletionResponse response) {
@@ -386,7 +383,9 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		item.setSortText(label);
 		item.setKind(CompletionItemKind.Property);
 		String insertText = label;
-		item.setDocumentation(Either.forLeft(description));
+		if (description != null) {
+			item.setDocumentation(Either.forLeft(description));
+		}
 		item.setFilterText(insertText);
 		item.setInsertTextFormat(InsertTextFormat.PlainText);
 		item.setTextEdit(new TextEdit(range, insertText));
