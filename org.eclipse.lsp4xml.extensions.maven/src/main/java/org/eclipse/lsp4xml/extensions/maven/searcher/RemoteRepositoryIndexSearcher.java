@@ -26,7 +26,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
-import java.util.zip.ZipEntry;
 
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
@@ -102,7 +101,8 @@ public class RemoteRepositoryIndexSearcher {
 		}
 		this.knownRepositories = new HashSet<>();
 		knownRepositories.add(CENTRAL_REPO);
-		this.indexPath = new File(RepositorySystem.defaultUserLocalRepository.getAbsolutePath(), "_maven_index_");
+		File localRepository = new File(RepositorySystem.defaultUserLocalRepository.getAbsolutePath());
+		this.indexPath = new File(localRepository.getParent(), "_maven_index_");
 		indexPath.mkdirs();
 		knownRepositories.stream().map(RemoteRepository::getUrl).map(URI::create).forEach(this::getIndexingContext);
 		// TODO knownRepositories.addAll(readRepositoriesFromSettings());
@@ -214,8 +214,8 @@ public class RemoteRepositoryIndexSearcher {
 
 	private IndexingContext initializeContext(URI repoUrl) {
 		String fileSystemFriendlyName = repoUrl.getHost() + repoUrl.hashCode();
-		File repoFile = new File(indexPath + fileSystemFriendlyName + "-cache");
-		File repoIndex = new File(indexPath + fileSystemFriendlyName + "-index");
+		File repoFile = new File(indexPath, fileSystemFriendlyName + "-cache");
+		File repoIndex = new File(indexPath, fileSystemFriendlyName + "-index");
 		try {
 			return indexer.createIndexingContext(repoUrl.toString(), repoUrl.toString(),
 					repoFile, repoIndex, repoUrl.toString(), null, true, true, indexers);
