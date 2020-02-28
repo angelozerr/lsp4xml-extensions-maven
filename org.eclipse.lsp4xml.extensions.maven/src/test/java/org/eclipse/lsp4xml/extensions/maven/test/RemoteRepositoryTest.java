@@ -26,7 +26,6 @@ import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.TextDocumentItem;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 
 public class RemoteRepositoryTest {
@@ -44,8 +43,7 @@ public class RemoteRepositoryTest {
 		connection.stop();
 	}
 
-
-	@Test(timeout=120000)
+	@Test
 	public void testRemoteGroupIdCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-remote-groupId-complete.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
@@ -80,6 +78,48 @@ public class RemoteRepositoryTest {
 		connection.languageServer.getTextDocumentService().didOpen(params);
 		Position pos = new Position(13, 13);
 		String desiredCompletion = "3.3.0";
+		List<CompletionItem> items = Collections.emptyList();
+		do {
+			 items = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), pos)).get().getRight().getItems();
+		} while (!completionContains(items, desiredCompletion));
+		assertTrue(completionContains(items, desiredCompletion));
+	}
+
+	@Test(timeout=120000)
+	public void testRemotePluginGroupIdCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-remote-plugin-groupId-complete.xml");
+		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+		connection.languageServer.getTextDocumentService().didOpen(params);
+		final Position pos = new Position(11, 14);
+		String desiredCompletion = "org.codehaus.mojo";
+		List<CompletionItem> items = Collections.emptyList();
+		do {
+			items = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), pos)).get().getRight().getItems();
+		} while (!completionContains(items, desiredCompletion));
+		assertTrue(completionContains(items, desiredCompletion));
+	}
+	
+	@Test(timeout=120000)
+	public void testRemotePluginArtifactIdCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-remote-plugin-artifactId-complete.xml");
+		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+		connection.languageServer.getTextDocumentService().didOpen(params);
+		final Position pos = new Position(12, 15);
+		String desiredCompletion = "deb-maven-plugin";
+		List<CompletionItem> items = Collections.emptyList();
+		do {
+			 items = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), pos)).get().getRight().getItems();
+		} while (!completionContains(items, desiredCompletion));
+		assertTrue(completionContains(items, desiredCompletion));
+	}
+	
+	@Test(timeout=120000)
+	public void testRemotePluginVersionCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-remote-plugin-version-complete.xml");
+		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+		connection.languageServer.getTextDocumentService().didOpen(params);
+		Position pos = new Position(13, 12);
+		String desiredCompletion = "1.0-beta-1";
 		List<CompletionItem> items = Collections.emptyList();
 		do {
 			 items = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), pos)).get().getRight().getItems();

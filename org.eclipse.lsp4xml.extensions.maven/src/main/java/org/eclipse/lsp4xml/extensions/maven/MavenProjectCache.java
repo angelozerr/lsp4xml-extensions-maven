@@ -9,6 +9,7 @@
 package org.eclipse.lsp4xml.extensions.maven;
 
 import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -19,17 +20,25 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import org.apache.maven.artifact.InvalidRepositoryException;
 import org.apache.maven.artifact.repository.ArtifactRepository;
+import org.apache.maven.artifact.repository.ArtifactRepositoryPolicy;
+import org.apache.maven.artifact.repository.DefaultArtifactRepository;
+import org.apache.maven.artifact.repository.MavenArtifactRepository;
+import org.apache.maven.artifact.repository.layout.DefaultRepositoryLayout;
 import org.apache.maven.execution.DefaultMavenExecutionRequest;
 import org.apache.maven.execution.MavenExecutionRequest;
 import org.apache.maven.internal.aether.DefaultRepositorySystemSessionFactory;
+import org.apache.maven.model.Build;
+import org.apache.maven.model.Model;
 import org.apache.maven.model.building.DefaultModelProblem;
 import org.apache.maven.model.building.ModelBuildingException;
 import org.apache.maven.model.building.ModelProblem;
 import org.apache.maven.model.building.ModelProblem.Severity;
 import org.apache.maven.model.building.ModelProblem.Version;
+import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
 import org.apache.maven.project.DefaultProjectBuildingRequest;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.ProjectBuilder;
@@ -39,6 +48,7 @@ import org.apache.maven.project.ProjectBuildingResult;
 import org.apache.maven.repository.RepositorySystem;
 import org.codehaus.plexus.PlexusContainer;
 import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
+import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.lsp4xml.dom.DOMDocument;
 
@@ -50,6 +60,7 @@ public class MavenProjectCache {
 	private final PlexusContainer plexusContainer;
 
 	private MavenExecutionRequest mavenRequest;
+	MavenXpp3Reader mavenReader = new MavenXpp3Reader();
 	private DefaultRepositorySystemSession repositorySystemSession;
 	private ProjectBuilder projectBuilder;
 	private RepositorySystem repositorySystem;
@@ -121,6 +132,26 @@ public class MavenProjectCache {
 				if (e.getCause() instanceof ModelBuildingException) {
 					ModelBuildingException modelBuildingException = (ModelBuildingException) e.getCause();
 					problems.addAll(modelBuildingException.getProblems());
+					try {
+						Model model = mavenReader.read(new FileReader(workingCopy));
+						MavenProject project = new MavenProject(model);
+						project.setRemoteArtifactRepositories(model.getRepositories().stream()
+								.map(repo -> new MavenArtifactRepository(repo.getId(), repo.getUrl(),
+										new DefaultRepositoryLayout(),
+										new ArtifactRepositoryPolicy(true,
+												ArtifactRepositoryPolicy.UPDATE_POLICY_INTERVAL,
+												ArtifactRepositoryPolicy.CHECKSUM_POLICY_WARN),
+										new ArtifactRepositoryPolicy(true,
+												ArtifactRepositoryPolicy.UPDATE_POLICY_INTERVAL,
+												ArtifactRepositoryPolicy.CHECKSUM_POLICY_WARN)))
+								.distinct().collect(Collectors.toList()));
+						project.setFile(workingCopy);
+						project.setBuild(new Build());
+						projectCache.put(uri, project);
+						projectParsedListeners.forEach(listener -> listener.accept(project));
+					} catch (IOException | XmlPullParserException e1) {
+						e1.printStackTrace();
+					}
 				} else {
 					problems.add(
 							new DefaultModelProblem(e.getMessage(), Severity.FATAL, Version.BASE, null, -1, -1, e));
@@ -130,7 +161,7 @@ public class MavenProjectCache {
 				if (e.getResults().size() == 1) {
 					MavenProject project = e.getResults().get(0).getProject();
 					if (project != null) {
-						projectCache.put(uri, e.getResults().get(0).getProject());
+						projectCache.put(uri, project);
 						projectParsedListeners.forEach(listener -> listener.accept(project));
 					}
 				}
