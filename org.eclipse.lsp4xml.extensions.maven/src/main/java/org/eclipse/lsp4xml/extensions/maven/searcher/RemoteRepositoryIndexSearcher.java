@@ -54,11 +54,10 @@ import org.codehaus.plexus.PlexusContainer;
 import org.eclipse.aether.repository.RemoteRepository;
 
 public class RemoteRepositoryIndexSearcher {
-	public static final int COMPARISON_TYPE_GREATER = 1; // 0001
-	public static final int COMPARISON_TYPE_LESS = 2; // 0010
-	public static final int COMPARISON_TYPE_EQUALS = 4; // 0100
+	private static final String PACKAGING_TYPE_JAR = "jar";
+	private static final String PACKAGING_TYPE_MAVEN_PLUGIN = "maven-plugin";
 
-	private static final RemoteRepository CENTRAL_REPO = new RemoteRepository.Builder("central", "default", "https://repo.maven.apache.org/maven2/").build();
+	private static final RemoteRepository CENTRAL_REPO = new RemoteRepository.Builder("central", "default", "https://repo.maven.apache.org/maven2").build();
 	private final Set<RemoteRepository> knownRepositories;
 	
 	private Indexer indexer;
@@ -95,7 +94,7 @@ public class RemoteRepositoryIndexSearcher {
 			}, null, null);
 			indexers.add(plexusContainer.lookup(IndexCreator.class, "min"));
 			indexers.add(plexusContainer.lookup(IndexCreator.class, "jarContent"));
-			indexers.add(plexusContainer.lookup(IndexCreator.class, "maven-plugin"));
+			indexers.add(plexusContainer.lookup(IndexCreator.class, PACKAGING_TYPE_MAVEN_PLUGIN));
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -125,13 +124,12 @@ public class RemoteRepositoryIndexSearcher {
 			return future;
 		}
 	}
-
-	public Set<String> getArtifactVersions(Artifact artifactToSearch, IndexingContext... requestSpecificContexts) {
-		// final BooleanQuery query = createArtifactVersionQuery(artifactToSearch);
+	
+	private Set<String> internalGetArtifactVersions(Artifact artifactToSearch, String packaging, IndexingContext... requestSpecificContexts) {
 		final Query groupIdQ = indexer.constructQuery(MAVEN.GROUP_ID, artifactToSearch.getGroupId(), SearchType.EXACT);
 		final Query artifactIdQ = indexer.constructQuery(MAVEN.ARTIFACT_ID, artifactToSearch.getArtifactId(),
 				SearchType.EXACT);
-		final Query jarPackagingQ = indexer.constructQuery(MAVEN.PACKAGING, "jar", SearchType.EXACT);
+		final Query jarPackagingQ = indexer.constructQuery(MAVEN.PACKAGING, packaging, SearchType.EXACT);
 
 		final BooleanQuery query = new BooleanQuery.Builder().add(groupIdQ, Occur.MUST).add(artifactIdQ, Occur.SHOULD)
 				.add(jarPackagingQ, Occur.MUST).build();
@@ -144,13 +142,17 @@ public class RemoteRepositoryIndexSearcher {
 		return createIndexerQuery(artifactToSearch, request).stream().map(ArtifactInfo::getVersion).collect(Collectors.toSet());
 	}
 
-	/**
-	 * @param artifactToSearch a CompletableFuture containing a {@code Map<String artifactId, String artifactDescription>} 
-	 * @return
-	 */
-	public Collection<ArtifactInfo> getArtifactIds(Artifact artifactToSearch, IndexingContext... requestSpecificContexts) {
+	public Set<String> getArtifactVersions(Artifact artifactToSearch, IndexingContext... requestSpecificContexts) {
+		return internalGetArtifactVersions(artifactToSearch, PACKAGING_TYPE_JAR, requestSpecificContexts);
+	}
+	
+	public Set<String> getPluginArtifactVersions(Artifact artifactToSearch, IndexingContext... requestSpecificContexts) {
+		return internalGetArtifactVersions(artifactToSearch, PACKAGING_TYPE_MAVEN_PLUGIN, requestSpecificContexts);
+	}
+	
+	private Collection<ArtifactInfo> internalGetArtifactIds(Artifact artifactToSearch, String packaging, IndexingContext... requestSpecificContexts) {
 		final Query groupIdQ = indexer.constructQuery(MAVEN.GROUP_ID, artifactToSearch.getGroupId(), SearchType.SCORED);
-		final Query jarPackagingQ = indexer.constructQuery(MAVEN.PACKAGING, "jar", SearchType.EXACT);
+		final Query jarPackagingQ = indexer.constructQuery(MAVEN.PACKAGING, packaging, SearchType.EXACT);
 		final BooleanQuery query = new BooleanQuery.Builder().add(groupIdQ, Occur.MUST).add(jarPackagingQ, Occur.MUST)
 				.build();
 		List<IndexingContext> contexts = Collections.unmodifiableList(requestSpecificContexts != null && requestSpecificContexts.length > 0 ?
@@ -160,10 +162,21 @@ public class RemoteRepositoryIndexSearcher {
 		return createIndexerQuery(artifactToSearch, request);
 	}
 
-	// TODO: Get groupid description for completion
-	public Set<String> getGroupIds(Artifact artifactToSearch, IndexingContext... requestSpecificContexts) {
+	/**
+	 * @param artifactToSearch a CompletableFuture containing a {@code Map<String artifactId, String artifactDescription>} 
+	 * @return
+	 */
+	public Collection<ArtifactInfo> getArtifactIds(Artifact artifactToSearch, IndexingContext... requestSpecificContexts) {
+		return internalGetArtifactIds(artifactToSearch, PACKAGING_TYPE_JAR, requestSpecificContexts);
+	}
+	
+	public Collection<ArtifactInfo> getPluginArtifactIds(Artifact artifactToSearch, IndexingContext... requestSpecificContexts) {
+		return internalGetArtifactIds(artifactToSearch, PACKAGING_TYPE_MAVEN_PLUGIN, requestSpecificContexts);
+	}
+
+	private Set<String> internalGetGroupIds(Artifact artifactToSearch, String packaging, IndexingContext... requestSpecificContexts) {
 		final Query groupIdQ = indexer.constructQuery(MAVEN.GROUP_ID, artifactToSearch.getGroupId(), SearchType.SCORED);
-		final Query jarPackagingQ = indexer.constructQuery(MAVEN.PACKAGING, "jar", SearchType.EXACT);
+		final Query jarPackagingQ = indexer.constructQuery(MAVEN.PACKAGING, packaging, SearchType.EXACT);
 		final BooleanQuery query = new BooleanQuery.Builder().add(groupIdQ, Occur.MUST).add(jarPackagingQ, Occur.MUST)
 				.build();
 		List<IndexingContext> contexts = Collections.unmodifiableList(requestSpecificContexts != null && requestSpecificContexts.length > 0 ?
@@ -173,7 +186,15 @@ public class RemoteRepositoryIndexSearcher {
 		// TODO: Find the Count sweet spot
 		request.setCount(7500);
 
-		return createIndexerQuery(artifactToSearch, request).stream().map(ArtifactInfo::getGroupId).collect(Collectors.toSet());
+		return createIndexerQuery(artifactToSearch, request).stream().map(ArtifactInfo::getGroupId).collect(Collectors.toSet());		
+	}
+	// TODO: Get groupid description for completion
+	public Set<String> getGroupIds(Artifact artifactToSearch, IndexingContext... requestSpecificContexts) {
+		return internalGetGroupIds(artifactToSearch, PACKAGING_TYPE_JAR, requestSpecificContexts);
+	}
+	
+	public Set<String> getPluginGroupIds(Artifact artifactToSearch, IndexingContext... requestSpecificContexts) {
+		return internalGetGroupIds(artifactToSearch, PACKAGING_TYPE_MAVEN_PLUGIN, requestSpecificContexts);
 	}
 
 	private CompletableFuture<Void> updateIndex(IndexingContext context) {
@@ -204,9 +225,12 @@ public class RemoteRepositoryIndexSearcher {
 				// TODO: Fix this - the maven central context gets reported as broken when
 				// another context is broken
 				indexDownloadJobs.remove(context);
-				System.err.println("Invalid Context: " + context.getRepositoryId() + " @ "
-						+ context.getRepositoryUrl());
-				e.printStackTrace();
+				CompletableFuture.runAsync(() -> {
+					e.printStackTrace();
+					throw new IllegalArgumentException(
+							"Invalid Context: " + context.getRepositoryId() + " @ " + context.getRepositoryUrl());
+				});
+				
 				// TODO: Maybe scan for maven metadata to use as an alternative to retrieve GAV
 			}
 		});
@@ -253,7 +277,7 @@ public class RemoteRepositoryIndexSearcher {
 				.map(repo -> new RemoteRepository.Builder(repo.getId(), repo.getLayout(), repo.getUrl()).build())
 				.distinct().collect(Collectors.toList()));
 		Deque<MavenProject> parentHierarchy = new ArrayDeque<>();
-		if (model.getParent() != null) {
+		if (model.getParent() != null && project.getParent() != null) {
 			parentHierarchy.add(project.getParent());
 			while (!parentHierarchy.isEmpty()) {
 				MavenProject currentParentProj = parentHierarchy.pop();

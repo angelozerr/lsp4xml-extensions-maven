@@ -56,7 +56,6 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 	private final LocalRepositorySearcher localRepositorySearcher = new LocalRepositorySearcher();
 	private final MavenProjectCache cache;
 	private final RemoteRepositoryIndexSearcher indexSearcher;
-	private CompletableFuture<Void> indexSyncRequest;
 
 	public MavenCompletionParticipant(MavenProjectCache cache, RemoteRepositoryIndexSearcher indexSearcher) {
 		this.cache = cache;
@@ -77,9 +76,10 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 				collectParentCompletion(request, response);
 				break;
 			case "plugin":
+				collectRemotePluginGAVCompletion(request, response);
 				break;
 			case "dependency":
-				collectionRemoteGAVCompletion(request, response);
+				collectRemoteGAVCompletion(request, response);
 				break;
 			default:
 				break;
@@ -95,7 +95,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 					phase -> phase.description, request, response);
 			break;
 		case "groupId":
-			if (!parent.getParentElement().getLocalName().equals("parent")) {
+			if (!parent.getParentElement().getLocalName().equals("parent") && !parent.getParentElement().getLocalName().equals("plugin")) {
 				collectSimpleCompletionItems(ArtifactSearcherManager.getInstance().searchLocalGroupIds(null),
 						Function.identity(), Function.identity(), request, response);
 			}
@@ -210,9 +210,9 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		allProps.put("project.groupId", project == null ? "unknown" : project.getGroupId());
 		allProps.put("project.artifactId", project == null ? "unknown" : project.getArtifactId());
 		allProps.put("project.name", project == null ? "unknown" : project.getName());
-		allProps.put("project.build.directory", project == null ? "unknown" : project.getBuild().getDirectory());
+		allProps.put("project.build.directory", project.getBuild() == null ? "unknown" : project.getBuild().getDirectory());
 		allProps.put("project.build.outputDirectory",
-				project == null ? "unknown" : project.getBuild().getOutputDirectory());
+				project.getBuild() == null ? "unknown" : project.getBuild().getOutputDirectory());
 
 		for (Entry<String, String> property : allProps.entrySet()) {
 			CompletionItem item = new CompletionItem();
@@ -232,8 +232,9 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			response.addCompletionItem(item, false);
 		}
 	}
-
-	private void collectionRemoteGAVCompletion(ICompletionRequest request, ICompletionResponse response) {
+	
+	private void internalCollectRemoteGAVCompletion(ICompletionRequest request, ICompletionResponse response,
+			boolean onlyPlugins) {
 		DOMElement node = request.getParentElement();
 		DOMDocument doc = request.getXMLDocument();
 
@@ -249,30 +250,52 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		try {
 			CompletableFuture.allOf(project.getRemoteArtifactRepositories().stream().map(repository -> {
 				final CompletionItem updatingItem = new CompletionItem("Updating index for " + repository.getUrl());
+				updatingItem.setPreselect(true);
+				updatingItem.setInsertText("");
 				items.add(updatingItem);
-				return indexSearcher
-					.getIndexingContext(URI.create(repository.getUrl()))
-					.thenAccept(index -> {
-							switch (node.getLocalName()) {
-							case "groupId":
-								if (artifactToSearch.getGroupId().equals(VersionValidator.placeholderArtifact.getGroupId())) {
-									// Don't do a remote groupId search if the user hasn't inputed anything as there
-									// will be too many results
-									return;
-								}
-								indexSearcher.getGroupIds(artifactToSearch, index)
-										.stream().map(groupId -> toCompletionItem(groupId, "GroupId", range)).forEach(items::add);
-								return;
-							case "artifactId":
-								indexSearcher.getArtifactIds(artifactToSearch, index).stream().map(artifactInfo -> toCompletionItem(artifactInfo.getArtifactId(), artifactInfo.getDescription(), range)).forEach(items::add);
-								return;
-							case "version":
-								indexSearcher.getArtifactVersions(artifactToSearch, index).stream().map(version -> toCompletionItem(version, "Artifact Version", range)).forEach(items::add);
-								return;
-							}
-					}).whenComplete((ok, error) -> {
-						items.remove(updatingItem);
-					});
+				return indexSearcher.getIndexingContext(URI.create(repository.getUrl())).thenAccept(index -> {
+					switch (node.getLocalName()) {
+					case "groupId":
+						if (artifactToSearch.getGroupId().equals(VersionValidator.placeholderArtifact.getGroupId())) {
+							// Don't do a remote groupId search if the user hasn't inputed anything as there
+							// will be too many results
+							return;
+						}
+						// TODO: just pass only plugins boolean, and make getGroupId's accept a boolean parameter
+						if (onlyPlugins) {
+							indexSearcher.getPluginGroupIds(artifactToSearch, index).stream()
+									.map(groupId -> toCompletionItem(groupId, "GroupId", range)).forEach(items::add);
+						} else {
+							indexSearcher.getGroupIds(artifactToSearch, index).stream()
+									.map(groupId -> toCompletionItem(groupId, "GroupId", range)).forEach(items::add);
+						}
+						return;
+					case "artifactId":
+						if (onlyPlugins) {
+							indexSearcher.getPluginArtifactIds(artifactToSearch, index).stream()
+									.map(artifactInfo -> toCompletionItem(artifactInfo.getArtifactId(),
+											artifactInfo.getDescription(), range))
+									.forEach(items::add);
+						} else {
+							indexSearcher.getArtifactIds(artifactToSearch, index).stream()
+									.map(artifactInfo -> toCompletionItem(artifactInfo.getArtifactId(),
+											artifactInfo.getDescription(), range))
+									.forEach(items::add);
+						}
+						return;
+					case "version":
+						if (onlyPlugins) {
+							indexSearcher.getPluginArtifactVersions(artifactToSearch, index).stream()
+									.map(version -> toCompletionItem(version, "Artifact Version", range))
+									.forEach(items::add);
+						} else {
+							indexSearcher.getArtifactVersions(artifactToSearch, index).stream()
+									.map(version -> toCompletionItem(version, "Artifact Version", range))
+									.forEach(items::add);
+						}
+						return;
+					}
+				}).whenComplete((ok, error) -> items.remove(updatingItem));
 			}).toArray(CompletableFuture<?>[]::new)).get(2, TimeUnit.SECONDS);
 		} catch (InterruptedException | ExecutionException exception) {
 			exception.printStackTrace();
@@ -280,6 +303,14 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			// nothing to log, some work still pending
 		}
 		items.forEach(response::addCompletionItem);
+	}
+
+	private void collectRemoteGAVCompletion(ICompletionRequest request, ICompletionResponse response) {
+		internalCollectRemoteGAVCompletion(request, response, false);
+	}
+	
+	private void collectRemotePluginGAVCompletion(ICompletionRequest request, ICompletionResponse response) {
+		internalCollectRemoteGAVCompletion(request, response, true);
 	}
 
 	private void collectSubModuleCompletion(ICompletionRequest request, ICompletionResponse response) {
