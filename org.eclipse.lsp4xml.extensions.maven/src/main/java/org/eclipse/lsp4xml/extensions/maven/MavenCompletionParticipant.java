@@ -15,20 +15,36 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
 
 import org.apache.maven.Maven;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.versioning.ArtifactVersion;
 import org.apache.maven.model.Model;
+import org.apache.maven.model.Plugin;
+import org.apache.maven.model.Repository;
+import org.apache.maven.plugin.InvalidPluginDescriptorException;
+import org.apache.maven.plugin.MavenPluginManager;
+import org.apache.maven.plugin.PluginDescriptorParsingException;
+import org.apache.maven.plugin.PluginResolutionException;
+import org.apache.maven.plugin.descriptor.MojoDescriptor;
+import org.apache.maven.plugin.descriptor.Parameter;
+import org.apache.maven.plugin.descriptor.PluginDescriptor;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.repository.RepositorySystem;
+import org.eclipse.aether.repository.RemoteRepository;
+import org.eclipse.aether.repository.RemoteRepository.Builder;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
 import org.eclipse.lsp4j.InsertTextFormat;
@@ -49,6 +65,9 @@ import org.eclipse.lsp4xml.services.extensions.CompletionParticipantAdapter;
 import org.eclipse.lsp4xml.services.extensions.ICompletionRequest;
 import org.eclipse.lsp4xml.services.extensions.ICompletionResponse;
 import org.eclipse.lsp4xml.utils.XMLPositionUtility;
+import org.jsoup.nodes.Node;
+
+import com.google.common.base.Predicate;
 
 public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 
@@ -56,10 +75,12 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 	private final LocalRepositorySearcher localRepositorySearcher = new LocalRepositorySearcher();
 	private final MavenProjectCache cache;
 	private final RemoteRepositoryIndexSearcher indexSearcher;
+	private MavenPluginManager pluginManager;
 
-	public MavenCompletionParticipant(MavenProjectCache cache, RemoteRepositoryIndexSearcher indexSearcher) {
+	public MavenCompletionParticipant(MavenProjectCache cache, RemoteRepositoryIndexSearcher indexSearcher, MavenPluginManager pluginManager) {
 		this.cache = cache;
 		this.indexSearcher = indexSearcher;
+		this.pluginManager = pluginManager;
 	}
 
 	@Override
@@ -107,6 +128,12 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			collectLocalArtifacts(request, response);
 			// Break commented out for now so that snippets can be available
 			// break;
+		case "goal":
+			collectGoals(request, response);
+			break;
+		case "configuration":
+			collectPluginConfigurationElements(request, response);
+			break;
 		default:
 			initSnippets();
 			TextDocument document = parent.getOwnerDocument().getTextDocument();
@@ -123,6 +150,95 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		if (request.getNode().isText()) {
 			completeProperties(request, response);
 		}
+	}
+
+	private void collectGoals(ICompletionRequest request, ICompletionResponse response) {
+		PluginDescriptor pluginDescriptor = getContainingPluginDescriptor(request);
+		if (pluginDescriptor != null) {
+			collectSimpleCompletionItems(pluginDescriptor.getMojos(), MojoDescriptor::getGoal, MojoDescriptor::getDescription, request, response);
+		}
+	}
+	private PluginDescriptor getContainingPluginDescriptor(ICompletionRequest request) {
+		MavenProject project = cache.getLastSuccessfulMavenProject(request.getXMLDocument());
+		if (project == null) {
+			return null;
+		}
+		DOMNode pluginNode = findClosestParentNode(request, "plugin");
+		if (pluginNode == null) {
+			return null;
+		}
+		Optional<String> groupId = findChildElementText(pluginNode, "groupId");
+		Optional<String> artifactId = findChildElementText(pluginNode, "artifactId");
+		String pluginKey = "";
+		if (groupId.isPresent()) {
+			pluginKey += groupId.get();
+			pluginKey += ':';
+		}
+		if (artifactId.isPresent()) {
+			pluginKey += artifactId.get();
+		}
+		Plugin plugin = project.getPlugin(pluginKey);
+		if (plugin == null) {
+			return null;
+		}
+		
+		try {
+			return pluginManager.getPluginDescriptor(plugin, project.getPluginRepositories().stream().map(this::toRemoteRepo).collect(Collectors.toList()), this.cache.getRepositorySystemSession());
+		} catch (PluginResolutionException | PluginDescriptorParsingException | InvalidPluginDescriptorException e) {
+			e.printStackTrace();
+			return null;
+		}
+	}
+
+	private Optional<String> findChildElementText(DOMNode pluginNode, final String elementName) {
+		return pluginNode.getChildren().stream()
+				.filter(node -> elementName.equals(node.getLocalName()))
+				.flatMap(node -> node.getChildren().stream())
+				.findAny()
+				.map(DOMNode::getTextContent)
+				.map(String::trim);
+	}
+
+	private RemoteRepository toRemoteRepo(Repository modelRepo) {
+		Builder builder = new RemoteRepository.Builder(modelRepo.getId(), modelRepo.getLayout(), modelRepo.getLayout());
+		return builder.build();
+		
+	}
+
+	private DOMNode findClosestParentNode(final ICompletionRequest request, final String localName) {
+		if (localName == null || request == null) {
+			return null;
+		}
+		DOMNode pluginNode = request.getNode();
+		while (!localName.equals(pluginNode.getLocalName())) {
+			pluginNode = pluginNode.getParentNode();
+		}
+		if (localName.equals(pluginNode.getLocalName())) {
+			return pluginNode;
+		}
+		return null;
+	}
+
+	private void collectPluginConfigurationElements(ICompletionRequest request, ICompletionResponse response) {
+		PluginDescriptor pluginDescriptor = getContainingPluginDescriptor(request);
+		if (pluginDescriptor == null) {
+			return;
+		}
+		List<MojoDescriptor> mojosToConsiderList = pluginDescriptor.getMojos();
+		DOMNode executionElementDomNode = findClosestParentNode(request, "execution");
+		if (executionElementDomNode != null) {
+			Set<String> interestingMojos = executionElementDomNode.getChildren().stream()
+				.filter(node -> "goals".equals(node.getLocalName()))
+				.flatMap(node -> node.getChildren().stream())
+				.filter(node -> "goal".equals(node.getLocalName()))
+				.flatMap(node -> node.getChildren().stream())
+				.filter(DOMNode::isText)
+				.map(DOMNode::getTextContent)
+				.collect(Collectors.toSet());
+			mojosToConsiderList = mojosToConsiderList.stream().filter(mojo -> interestingMojos.contains(mojo.getGoal())).collect(Collectors.toList());
+		}
+		List<Parameter> parameters = mojosToConsiderList.stream().flatMap(mojo -> mojo.getParameters().stream()).collect(Collectors.toList());
+		collectSimpleCompletionItems(parameters, Parameter::getName, Parameter::getDescription, request, response);
 	}
 
 	private void collectLocalArtifacts(ICompletionRequest request, ICompletionResponse response) {
