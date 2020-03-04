@@ -120,7 +120,7 @@ public class MavenProjectCache {
 			Files.write(workingCopy.toPath(), document.getText().getBytes(), StandardOpenOption.CREATE);
 			ProjectBuildingRequest request = new DefaultProjectBuildingRequest();
 			request.setLocalRepository(mavenRequest.getLocalRepository());
-			request.setRepositorySession(repositorySystemSession);
+			request.setRepositorySession(getRepositorySystemSession());
 			ProjectBuildingResult buildResult = projectBuilder.build(workingCopy, request);
 			problems.addAll(buildResult.getProblems());
 			if (buildResult.getProject() != null) {
@@ -179,6 +179,9 @@ public class MavenProjectCache {
 	}
 
 	private void initializeMavenBuildState() throws ComponentLookupException, InvalidRepositoryException {
+		if (mavenRequest != null) {
+			return;
+		}
 		projectBuilder = getPlexusContainer().lookup(ProjectBuilder.class);
 		mavenRequest = new DefaultMavenExecutionRequest();
 		mavenRequest.setLocalRepositoryPath(RepositorySystem.defaultUserLocalRepository);
@@ -190,11 +193,21 @@ public class MavenProjectCache {
 	}
 	
 	public RepositorySystem getRepositorySystem() {
+		try {
+			initializeMavenBuildState();
+		} catch (ComponentLookupException | InvalidRepositoryException e) {
+			e.printStackTrace();
+		}
 		return this.repositorySystem;
 	}
 
 
 	public ArtifactRepository getLocalRepository() {
+		try {
+			initializeMavenBuildState();
+		} catch (ComponentLookupException | InvalidRepositoryException e) {
+			e.printStackTrace();
+		}
 		return localRepo;
 	}
 
@@ -204,6 +217,15 @@ public class MavenProjectCache {
 
 	public void addProjectParsedListener(Consumer<MavenProject> listener) {
 		this.projectParsedListeners.add(listener);
+	}
+
+	public DefaultRepositorySystemSession getRepositorySystemSession() {
+		try {
+			initializeMavenBuildState();
+		} catch (ComponentLookupException | InvalidRepositoryException e) {
+			e.printStackTrace();
+		}
+		return repositorySystemSession;
 	}
 
 }

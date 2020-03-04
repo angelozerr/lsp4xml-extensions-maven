@@ -11,6 +11,7 @@
 package org.eclipse.lsp4xml.extensions.maven;
 
 import org.apache.maven.Maven;
+import org.apache.maven.plugin.MavenPluginManager;
 import org.codehaus.plexus.ContainerConfiguration;
 import org.codehaus.plexus.DefaultContainerConfiguration;
 import org.codehaus.plexus.DefaultPlexusContainer;
@@ -20,6 +21,7 @@ import org.codehaus.plexus.PlexusContainerException;
 import org.codehaus.plexus.classworlds.ClassWorld;
 import org.codehaus.plexus.classworlds.realm.ClassRealm;
 import org.codehaus.plexus.classworlds.realm.NoSuchRealmException;
+import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4xml.dom.DOMDocument;
 import org.eclipse.lsp4xml.extensions.maven.searcher.RemoteRepositoryIndexSearcher;
@@ -62,7 +64,11 @@ public class MavenPlugin implements IXMLExtension {
 		}
 		indexSearcher = new RemoteRepositoryIndexSearcher(container);
 		cache.addProjectParsedListener(indexSearcher::updateKnownRepositories);
-		completionParticipant = new MavenCompletionParticipant(cache, indexSearcher);
+		try {
+			completionParticipant = new MavenCompletionParticipant(cache, indexSearcher, container.lookup(MavenPluginManager.class));
+		} catch (ComponentLookupException e) {
+			e.printStackTrace();
+		}
 		registry.registerCompletionParticipant(completionParticipant);
 		diagnosticParticipant = new MavenDiagnosticParticipant(cache);
 		registry.registerDiagnosticsParticipant(diagnosticParticipant);
