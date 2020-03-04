@@ -21,9 +21,12 @@ import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionList;
 import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
+import org.eclipse.lsp4j.Hover;
+import org.eclipse.lsp4j.MarkupContent;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.TextDocumentItem;
+import org.eclipse.lsp4j.TextDocumentPositionParams;
 import org.eclipse.lsp4j.TextEdit;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.junit.After;
@@ -43,6 +46,8 @@ public class PluginTest {
 	public void tearDown() {
 		connection.stop();
 	}
+	
+	// Completion related tests
 
 	@Test(timeout=15000)
 	public void testCompleteGoal() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
@@ -88,5 +93,29 @@ public class PluginTest {
 					.get();
 			items = completion.getRight().getItems();
 		} while (items.stream().map(CompletionItem::getLabel).noneMatch("appendOutput"::equals));
+	}
+	
+	// Hover related tests
+	
+	@Test(timeout=15000)
+ 	public void testPluginConfigurationHover() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+ 		TextDocumentItem textDocumentItem = MavenLemminxTestsUtils.createTextDocumentItem("/pom-plugin-configuration-hover.xml");
+ 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+ 		connection.languageServer.getTextDocumentService().didOpen(params);
+ 		TextDocumentPositionParams pos = new TextDocumentPositionParams( new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(15, 5));
+ 		Hover hover = connection.languageServer.getTextDocumentService().hover(pos).get();
+ 		assertTrue(((MarkupContent) hover.getContents().getRight()).getValue().contains("The -source argument for the Java compiler."));
+
+	}
+	
+	@Test(timeout=15000)
+ 	public void testPluginGoalHover() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+ 		TextDocumentItem textDocumentItem = MavenLemminxTestsUtils.createTextDocumentItem("/pom-plugin-goal-hover.xml");
+ 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+ 		connection.languageServer.getTextDocumentService().didOpen(params);
+ 		TextDocumentPositionParams pos = new TextDocumentPositionParams( new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(18, 18));
+ 		Hover hover = connection.languageServer.getTextDocumentService().hover(pos).get();
+ 		assertTrue(((MarkupContent) hover.getContents().getRight()).getValue().contains("determines the duplicate declared dependencies."));
+
 	}
 }
