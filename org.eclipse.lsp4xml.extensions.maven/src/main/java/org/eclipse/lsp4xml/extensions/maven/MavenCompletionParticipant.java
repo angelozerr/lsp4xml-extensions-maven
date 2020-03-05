@@ -8,8 +8,11 @@
  *******************************************************************************/
 package org.eclipse.lsp4xml.extensions.maven;
 
+import java.awt.event.ItemEvent;
+import java.awt.image.RescaleOp;
 import java.io.IOException;
 import java.net.URI;
+import java.security.interfaces.RSAKey;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -81,6 +84,14 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		this.cache = cache;
 		this.indexSearcher = indexSearcher;
 		this.pluginManager = pluginManager;
+	}
+	
+	@Override
+	public void onTagOpen(ICompletionRequest request, ICompletionResponse response)
+			throws Exception {
+		if ("configuration".equals(request.getParentElement().getLocalName())) {
+			collectPluginConfigurationElements(request, response);
+		}
 	}
 
 	@Override
@@ -237,8 +248,22 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 				.collect(Collectors.toSet());
 			mojosToConsiderList = mojosToConsiderList.stream().filter(mojo -> interestingMojos.contains(mojo.getGoal())).collect(Collectors.toList());
 		}
-		List<Parameter> parameters = mojosToConsiderList.stream().flatMap(mojo -> mojo.getParameters().stream()).collect(Collectors.toList());
-		collectSimpleCompletionItems(parameters, Parameter::getName, Parameter::getDescription, request, response);
+		mojosToConsiderList.stream()
+			.flatMap(mojo -> mojo.getParameters().stream())
+			.map(parameter -> toTag(parameter.getName(), parameter.getDescription(), request))
+			.forEach(response::addCompletionItem);
+	}
+
+	private CompletionItem toTag(String name, String description, ICompletionRequest request) {
+		CompletionItem res = new CompletionItem(name);
+		res.setDocumentation(Either.forLeft(description));
+		res.setInsertTextFormat(InsertTextFormat.Snippet);
+		TextEdit edit = new TextEdit();
+		edit.setNewText('<' + name + ">$0</" + name + '>');
+		edit.setRange(request.getReplaceRange());
+		res.setTextEdit(edit);
+		res.setKind(CompletionItemKind.Field);
+		return res;
 	}
 
 	private void collectLocalArtifacts(ICompletionRequest request, ICompletionResponse response) {

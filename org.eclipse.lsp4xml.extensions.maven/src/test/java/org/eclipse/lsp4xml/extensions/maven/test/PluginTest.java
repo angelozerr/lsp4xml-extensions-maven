@@ -72,7 +72,21 @@ public class PluginTest {
 							new Position(23, 7)))
 					.get();
 			items = completion.getRight().getItems();
-		} while (items.stream().map(CompletionItem::getTextEdit).map(TextEdit::getNewText)
-				.noneMatch("appendOutput"::equals));
+		} while (items.stream().map(CompletionItem::getLabel).noneMatch("appendOutput"::equals));
+	}
+
+	@Test(timeout=15000)
+	public void testCompleteConfigurationParametersInTag() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-plugin-config-tag.xml");
+		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+		connection.languageServer.getTextDocumentService().didOpen(params);
+		List<CompletionItem> items = Collections.emptyList();
+		do {
+			Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService()
+					.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
+							new Position(20, 9)))
+					.get();
+			items = completion.getRight().getItems();
+		} while (items.stream().map(CompletionItem::getLabel).noneMatch("appendOutput"::equals));
 	}
 }
