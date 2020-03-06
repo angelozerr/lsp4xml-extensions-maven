@@ -43,7 +43,7 @@ public class RemoteRepositoryTest {
 		connection.stop();
 	}
 
-	@Test
+	@Test(timeout=120000)
 	public void testRemoteGroupIdCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-remote-groupId-complete.xml");
 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
