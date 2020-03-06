@@ -8,9 +8,11 @@
  *******************************************************************************/
 package org.eclipse.lsp4xml.extensions.maven;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
@@ -28,14 +30,17 @@ import org.apache.maven.artifact.repository.ArtifactRepositoryPolicy;
 import org.apache.maven.artifact.repository.DefaultArtifactRepository;
 import org.apache.maven.artifact.repository.MavenArtifactRepository;
 import org.apache.maven.artifact.repository.layout.DefaultRepositoryLayout;
+import org.apache.maven.building.Source;
 import org.apache.maven.execution.DefaultMavenExecutionRequest;
 import org.apache.maven.execution.MavenExecutionRequest;
 import org.apache.maven.internal.aether.DefaultRepositorySystemSessionFactory;
 import org.apache.maven.model.Build;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.building.DefaultModelProblem;
+import org.apache.maven.model.building.FileModelSource;
 import org.apache.maven.model.building.ModelBuildingException;
 import org.apache.maven.model.building.ModelProblem;
+import org.apache.maven.model.building.ModelSource2;
 import org.apache.maven.model.building.ModelProblem.Severity;
 import org.apache.maven.model.building.ModelProblem.Version;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
@@ -109,21 +114,24 @@ public class MavenProjectCache {
 
 	private void parse(DOMDocument document) {
 		URI uri = URI.create(document.getDocumentURI());
-		File workingCopy = null;
 		Collection<ModelProblem> problems = new ArrayList<ModelProblem>();
 		try {
 			if (mavenRequest == null) {
 				initializeMavenBuildState();
 			}
-			File file = new File(uri);
-			workingCopy = File.createTempFile("workingCopy", '.' + file.getName(), file.getParentFile());
-			Files.write(workingCopy.toPath(), document.getText().getBytes(), StandardOpenOption.CREATE);
 			ProjectBuildingRequest request = new DefaultProjectBuildingRequest();
 			request.setLocalRepository(mavenRequest.getLocalRepository());
 			request.setRepositorySession(getRepositorySystemSession());
-			ProjectBuildingResult buildResult = projectBuilder.build(workingCopy, request);
+			ProjectBuildingResult buildResult = projectBuilder.build(new FileModelSource(new File(uri)) {
+				@Override
+				public InputStream getInputStream() throws IOException {
+					return new ByteArrayInputStream(document.getText().getBytes());
+				}
+			}, request);
 			problems.addAll(buildResult.getProblems());
 			if (buildResult.getProject() != null) {
+				// setFile should ideally be invoked during project build, but related methods to pass modelSource and pomFile are private
+				buildResult.getProject().setFile(new File(uri));
 				projectCache.put(uri, buildResult.getProject());
 				projectParsedListeners.forEach(listener -> listener.accept(buildResult.getProject()));
 			}
@@ -132,7 +140,11 @@ public class MavenProjectCache {
 				if (e.getCause() instanceof ModelBuildingException) {
 					ModelBuildingException modelBuildingException = (ModelBuildingException) e.getCause();
 					problems.addAll(modelBuildingException.getProblems());
+					File workingCopy = null;
 					try {
+						File file = new File(uri);
+						workingCopy = File.createTempFile("workingCopy", '.' + file.getName(), file.getParentFile());
+						Files.write(workingCopy.toPath(), document.getText().getBytes(), StandardOpenOption.CREATE);
 						Model model = mavenReader.read(new FileReader(workingCopy));
 						MavenProject project = new MavenProject(model);
 						project.setRemoteArtifactRepositories(model.getRepositories().stream()
@@ -145,12 +157,16 @@ public class MavenProjectCache {
 												ArtifactRepositoryPolicy.UPDATE_POLICY_INTERVAL,
 												ArtifactRepositoryPolicy.CHECKSUM_POLICY_WARN)))
 								.distinct().collect(Collectors.toList()));
-						project.setFile(workingCopy);
+						project.setFile(file);
 						project.setBuild(new Build());
 						projectCache.put(uri, project);
 						projectParsedListeners.forEach(listener -> listener.accept(project));
 					} catch (IOException | XmlPullParserException e1) {
 						e1.printStackTrace();
+					} finally {
+						if (workingCopy != null) {
+							workingCopy.delete();
+						}
 					}
 				} else {
 					problems.add(
@@ -161,17 +177,15 @@ public class MavenProjectCache {
 				if (e.getResults().size() == 1) {
 					MavenProject project = e.getResults().get(0).getProject();
 					if (project != null) {
+						project.setFile(new File(uri));
 						projectCache.put(uri, project);
 						projectParsedListeners.forEach(listener -> listener.accept(project));
 					}
 				}
 			}
-		} catch (ComponentLookupException | IOException | InvalidRepositoryException e) {
+		} catch (ComponentLookupException | InvalidRepositoryException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-		}
-		if (workingCopy != null) {
-			workingCopy.delete();
 		}
 
 		lastCheckedVersion.put(uri, document.getTextDocument().getVersion());
