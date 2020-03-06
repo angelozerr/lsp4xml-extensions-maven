@@ -59,4 +59,19 @@ public class LocalRepoTests {
 		assertTrue(mavenCoreCompletionItem.isPresent());
 	}
 
+	@Test
+	public void testCompleteLocalGroupdId()
+			throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-local-groupId-complete.xml");
+		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+		connection.languageServer.getTextDocumentService().didOpen(params);
+		Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService()
+				.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
+						new Position(11, 12)))
+				.get();
+		List<CompletionItem> items = completion.getRight().getItems();
+		Optional<String> mavenGroupCompletionItem = items.stream().map(CompletionItem::getLabel)
+				.filter(label -> label.contains("org.apache.maven")).findAny();
+		assertTrue(mavenGroupCompletionItem.isPresent());
+	}
 }

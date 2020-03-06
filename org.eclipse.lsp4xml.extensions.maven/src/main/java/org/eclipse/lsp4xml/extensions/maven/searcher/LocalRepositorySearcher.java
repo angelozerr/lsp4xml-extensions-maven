@@ -11,10 +11,8 @@ package org.eclipse.lsp4xml.extensions.maven.searcher;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
-import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchKey;
@@ -23,53 +21,20 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.maven.artifact.versioning.ArtifactVersion;
 import org.apache.maven.artifact.versioning.DefaultArtifactVersion;
 
-import com.google.inject.Key;
+public class LocalRepositorySearcher {
 
-public class LocalRepositorySearcher implements IArtifactSearcher {
-
-	private static Path MAVEN_LOCAL_REPOSITORY = Paths.get(System.getProperty("user.home"), ".m2", "repository");
 	private Map<File, Map<Entry<String, String>, ArtifactVersion>> cache = new HashMap<File, Map<Entry<String,String>,ArtifactVersion>>();
 
-	@Override
-	public Set<String> searchGroupIds(String groupIdHint) {
-		if (Files.exists(MAVEN_LOCAL_REPOSITORY)) {
-			Set<String> groupIds = new HashSet<>();
-			FileVisitor<Path> fv = new SimpleFileVisitor<Path>() {
-				@Override
-				public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-					return super.visitFile(file, attrs);
-				}
-
-				@Override
-				public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-					if (MAVEN_LOCAL_REPOSITORY.equals(dir)) {
-						return FileVisitResult.CONTINUE;
-					}
-					if (dir.getFileName().toString().startsWith(".")) {
-						return FileVisitResult.SKIP_SUBTREE;
-					}
-					groupIds.add(dir.getFileName().toString());
-					return FileVisitResult.SKIP_SUBTREE;
-				}
-			};
-
-			try {
-				Files.walkFileTree(MAVEN_LOCAL_REPOSITORY, fv);
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-			return groupIds;
-
-		}
-		return Collections.emptySet();
+	public Set<String> searchGroupIds(File localRepository) throws IOException {
+		return getLocalArtifacts(localRepository).keySet().stream().map(Entry::getKey).collect(Collectors.toSet());
 	}
 
 	public Map<Entry<String, String>, ArtifactVersion> getLocalArtifacts(File localRepository) throws IOException {

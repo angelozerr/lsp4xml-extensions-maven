@@ -10,11 +10,13 @@ package org.eclipse.lsp4xml.extensions.maven;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.CompletableFuture;
@@ -22,6 +24,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.apache.maven.Maven;
 import org.apache.maven.artifact.Artifact;
@@ -46,7 +49,6 @@ import org.eclipse.lsp4xml.dom.DOMDocument;
 import org.eclipse.lsp4xml.dom.DOMElement;
 import org.eclipse.lsp4xml.dom.DOMNode;
 import org.eclipse.lsp4xml.dom.LineIndentInfo;
-import org.eclipse.lsp4xml.extensions.maven.searcher.ArtifactSearcherManager;
 import org.eclipse.lsp4xml.extensions.maven.searcher.LocalRepositorySearcher;
 import org.eclipse.lsp4xml.extensions.maven.searcher.RemoteRepositoryIndexSearcher;
 import org.eclipse.lsp4xml.services.extensions.CompletionParticipantAdapter;
@@ -104,27 +106,27 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		switch (parent.getLocalName()) {
 		case "scope":
 			collectSimpleCompletionItems(Arrays.asList(DependencyScope.values()), DependencyScope::getName,
-					DependencyScope::getDescription, request, response);
+					DependencyScope::getDescription, request).forEach(response::addCompletionAttribute);
 			break;
 		case "phase":
 			collectSimpleCompletionItems(Arrays.asList(Phase.ALL_STANDARD_PHASES), phase -> phase.id,
-					phase -> phase.description, request, response);
+					phase -> phase.description, request).forEach(response::addCompletionAttribute);
 			break;
 		case "groupId":
 			if (!parent.getParentElement().getLocalName().equals("parent") && !parent.getParentElement().getLocalName().equals("plugin")) {
-				collectSimpleCompletionItems(ArtifactSearcherManager.getInstance().searchLocalGroupIds(null),
-						Function.identity(), Function.identity(), request, response);
+				collectSimpleCompletionItems(localRepositorySearcher.searchGroupIds(RepositorySystem.defaultUserLocalRepository),
+						Function.identity(), Function.identity(), request).forEach(response::addCompletionAttribute);
 			}
 			break;
 		case "module":
 			collectSubModuleCompletion(request, response);
 			break;
 		case "dependencies":
-			collectLocalArtifacts(request, response);
+			collectLocalArtifacts(request).forEach(response::addCompletionItem);
 			// Break commented out for now so that snippets can be available
 			// break;
 		case "goal":
-			collectGoals(request, response);
+			collectGoals(request).forEach(response::addCompletionItem);
 			break;
 		case "configuration":
 			MavenPluginUtils.collectPluginConfigurationParameters(request, cache, pluginManager).stream()
@@ -142,18 +144,19 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 							return false;
 						}
 						return parent.getLocalName().equals(context.getValue());
-					}).forEach(completionItem -> response.addCompletionItem(completionItem));
+					}).forEach(response::addCompletionItem);
 		}
 		if (request.getNode().isText()) {
-			completeProperties(request, response);
+			completeProperties(request).forEach(response::addCompletionAttribute);
 		}
 	}
 
-	private void collectGoals(ICompletionRequest request, ICompletionResponse response) {
+	private Collection<CompletionItem> collectGoals(ICompletionRequest request) {
 		PluginDescriptor pluginDescriptor = MavenPluginUtils.getContainingPluginDescriptor(request, cache, pluginManager);
 		if (pluginDescriptor != null) {
-			collectSimpleCompletionItems(pluginDescriptor.getMojos(), MojoDescriptor::getGoal, MojoDescriptor::getDescription, request, response);
+			return collectSimpleCompletionItems(pluginDescriptor.getMojos(), MojoDescriptor::getGoal, MojoDescriptor::getDescription, request);
 		}
+		return Collections.emptySet();
 	}
 
 	private CompletionItem toTag(String name, MarkupContent description, ICompletionRequest request) {
@@ -168,7 +171,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		return res;
 	}
 
-	private void collectLocalArtifacts(ICompletionRequest request, ICompletionResponse response) {
+	private Collection<CompletionItem> collectLocalArtifacts(ICompletionRequest request) {
 		try {
 			Map<Entry<String, String>, ArtifactVersion> groupIdArtifactIdToVersion = localRepositorySearcher
 					.getLocalArtifacts(RepositorySystem.defaultUserLocalRepository);
@@ -201,6 +204,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			final String indentString = indent;
 			final String refIndent = refIndentBuilder.toString();
 			final String delim = lineDelimiter;
+			List<CompletionItem> completionItems = new ArrayList<CompletionItem>(groupIdArtifactIdToVersion.size());
 			groupIdArtifactIdToVersion.forEach((groupIdArtifactId, version) -> {
 				CompletionItem item = new CompletionItem();
 				item.setLabel(groupIdArtifactId.getValue() + " - " + groupIdArtifactId.getKey() + ':'
@@ -219,14 +223,16 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 					e.printStackTrace();
 				}
 				item.setDocumentation("From local repository\n\n" + item.getTextEdit().getNewText());
-				response.addCompletionItem(item, false);
+				completionItems.add(item);
 			});
+			return completionItems;
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+		return Collections.emptyList();
 	}
 
-	private void completeProperties(ICompletionRequest request, ICompletionResponse response) {
+	private Collection<CompletionItem> completeProperties(ICompletionRequest request) {
 		DOMDocument xmlDocument = request.getXMLDocument();
 		String documentText = xmlDocument.getText();
 		int initialPropertyOffset = request.getOffset();
@@ -257,14 +263,15 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		allProps.put("project.build.outputDirectory",
 				project.getBuild() == null ? "unknown" : project.getBuild().getOutputDirectory());
 
-		for (Entry<String, String> property : allProps.entrySet()) {
+		final int offset = initialPropertyOffset;
+		return allProps.entrySet().stream().map(property -> {
 			CompletionItem item = new CompletionItem();
 			item.setLabel("${" + property.getKey() + '}');
 			item.setDocumentation("Default Value: " + (property.getValue() != null ? property.getValue() : "unknown"));
 			try {
 				TextEdit textEdit = new TextEdit();
 				textEdit.setNewText(item.getLabel());
-				Range range = new Range(xmlDocument.positionAt(initialPropertyOffset),
+				Range range = new Range(xmlDocument.positionAt(offset),
 						xmlDocument.positionAt(request.getOffset()));
 				textEdit.setRange(range);
 				item.setTextEdit(textEdit);
@@ -272,8 +279,8 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 				e.printStackTrace();
 				item.setInsertText(item.getLabel());
 			}
-			response.addCompletionItem(item, false);
-		}
+			return item;
+		}).collect(Collectors.toList());
 	}
 	
 	private void internalCollectRemoteGAVCompletion(ICompletionRequest request, ICompletionResponse response,
@@ -420,15 +427,15 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 
 	}
 
-	private <T> void collectSimpleCompletionItems(Collection<T> items, Function<T, String> insertionTextExtractor,
-			Function<T, String> documentationExtractor, ICompletionRequest request, ICompletionResponse response) {
+	private <T> Collection<CompletionItem> collectSimpleCompletionItems(Collection<T> items, Function<T, String> insertionTextExtractor,
+			Function<T, String> documentationExtractor, ICompletionRequest request) {
 		DOMElement node = request.getParentElement();
 		DOMDocument doc = request.getXMLDocument();
 		boolean needClosingTag = node.getEndTagOpenOffset() == DOMNode.NULL_VALUE;
 		Range range = XMLPositionUtility.createRange(node.getStartTagCloseOffset() + 1,
 				needClosingTag ? node.getStartTagOpenOffset() + 1 : node.getEndTagOpenOffset(), doc);
 
-		for (T o : items) {
+		return items.stream().map(o -> {
 			String label = insertionTextExtractor.apply(o);
 			CompletionItem item = new CompletionItem();
 			item.setLabel(label);
@@ -438,8 +445,8 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			item.setFilterText(insertText);
 			item.setTextEdit(new TextEdit(range, insertText));
 			item.setInsertTextFormat(InsertTextFormat.PlainText);
-			response.addCompletionItem(item);
-		}
+			return item;
+		}).collect(Collectors.toList());
 	}
 
 	/**
