@@ -67,7 +67,7 @@ public class RemoteRepositoryTest {
 		List<CompletionItem> items = Collections.emptyList();
 		do {
 			 items = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), pos)).get().getRight().getItems();
-		} while (!completionContains(items, desiredCompletion));
+		} while (!completionContains(items, desiredCompletion) && items.size() < 30);
 		assertTrue(completionContains(items, desiredCompletion));
 	}
 	
@@ -109,7 +109,7 @@ public class RemoteRepositoryTest {
 		List<CompletionItem> items = Collections.emptyList();
 		do {
 			 items = connection.languageServer.getTextDocumentService().completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()), pos)).get().getRight().getItems();
-		} while (!completionContains(items, desiredCompletion));
+		} while (!completionContains(items, desiredCompletion) && items.size() < 30);
 		assertTrue(completionContains(items, desiredCompletion));
 	}
 	

@@ -37,6 +37,7 @@ import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 public class SimpleModelTest {
@@ -98,33 +99,14 @@ public class SimpleModelTest {
 	}
 
 	@Test
+	@Ignore(value = "Nothing to test at the moment")
 	public void testLocalParentGAVCompletion()
 			throws IOException, InterruptedException, ExecutionException, URISyntaxException, TimeoutException {
-		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-local-parent-complete.xml");
-		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
-		connection.languageServer.getTextDocumentService().didOpen(params);
-		List<CompletionItem> items = Collections.emptyList(); 
-		
-		items = connection.languageServer.getTextDocumentService()
-				.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
-						new Position(8, 12)))
-				.get(10000, TimeUnit.MILLISECONDS).getRight().getItems();
-
-		assertTrue(completionContains(items, "0.0.1-SNAPSHOT"));
-		
-		items = connection.languageServer.getTextDocumentService()
-				.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
-						new Position(7, 15)))
-				.get(10000, TimeUnit.MILLISECONDS).getRight().getItems();
-
-		assertTrue(completionContains(items, "test"));
-
-		items = connection.languageServer.getTextDocumentService()
-				.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
-						new Position(6, 12)))
-				.get(10000, TimeUnit.MILLISECONDS).getRight().getItems();
-
-		assertTrue(completionContains(items, "org.test"));
+		// Some features for parent GAV
+		// * if relativePath is set and resolve to a pom or a folder containing a pom, GAV must be available for completion
+		// * if relativePath is not set and parent contains a pom, complete GAV from parent
+		// * if relativePath is not set, complete with local repo artifacts with "pom" packaging
+		// * if relativePath is not set, complete with remote repo artifacts with "pom" packaging
 	}
 
 	@Test
