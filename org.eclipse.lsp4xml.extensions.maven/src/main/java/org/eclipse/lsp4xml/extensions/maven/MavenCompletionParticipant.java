@@ -19,22 +19,27 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import org.apache.maven.Maven;
-import org.apache.maven.artifact.Artifact;
+import org.apache.maven.artifact.repository.ArtifactRepository;
 import org.apache.maven.artifact.versioning.ArtifactVersion;
+import org.apache.maven.model.Dependency;
 import org.apache.maven.model.Model;
 import org.apache.maven.plugin.MavenPluginManager;
 import org.apache.maven.plugin.descriptor.MojoDescriptor;
 import org.apache.maven.plugin.descriptor.PluginDescriptor;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.repository.RepositorySystem;
+import org.checkerframework.checker.units.qual.s;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
 import org.eclipse.lsp4j.InsertTextFormat;
@@ -50,6 +55,7 @@ import org.eclipse.lsp4xml.dom.DOMElement;
 import org.eclipse.lsp4xml.dom.DOMNode;
 import org.eclipse.lsp4xml.dom.LineIndentInfo;
 import org.eclipse.lsp4xml.extensions.maven.searcher.LocalRepositorySearcher;
+import org.eclipse.lsp4xml.extensions.maven.searcher.LocalRepositorySearcher.GroupIdArtifactId;
 import org.eclipse.lsp4xml.extensions.maven.searcher.RemoteRepositoryIndexSearcher;
 import org.eclipse.lsp4xml.services.extensions.CompletionParticipantAdapter;
 import org.eclipse.lsp4xml.services.extensions.ICompletionRequest;
@@ -59,7 +65,7 @@ import org.eclipse.lsp4xml.utils.XMLPositionUtility;
 public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 
 	private boolean snippetsLoaded;
-	private final LocalRepositorySearcher localRepositorySearcher = new LocalRepositorySearcher();
+	private final LocalRepositorySearcher localRepositorySearcher = new LocalRepositorySearcher(RepositorySystem.defaultUserLocalRepository);
 	private final MavenProjectCache cache;
 	private final RemoteRepositoryIndexSearcher indexSearcher;
 	private MavenPluginManager pluginManager;
@@ -83,26 +89,30 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 	@Override
 	public void onXMLContent(ICompletionRequest request, ICompletionResponse response) throws Exception {
 		DOMElement parent = request.getParentElement();
-
 		if (parent == null || parent.getLocalName() == null) {
 			return;
 		}
-		// TODO: These two switch cases should be combined into one
-		if (parent.getParentElement() != null) {
-			switch (parent.getParentElement().getLocalName()) {
-			case "parent":
-				collectParentCompletion(request, response);
-				break;
-			case "plugin":
-				collectRemotePluginGAVCompletion(request, response);
-				break;
-			case "dependency":
-				collectRemoteGAVCompletion(request, response);
-				break;
-			default:
-				break;
-			}
-		}
+		DOMElement grandParent = parent.getParentElement();
+		boolean isPlugin = "plugin".equals(parent.getLocalName()) || (grandParent != null && "plugin".equals(grandParent.getLocalName()));
+		boolean isParentDeclaration = "parent".equals(parent.getLocalName()) || (grandParent != null && "parent".equals(grandParent.getLocalName()));
+		Optional<String> groupId = grandParent == null ? Optional.empty() : grandParent.getChildren().stream()
+				.filter(DOMNode::isElement)
+				.filter(node -> "groupId".equals(node.getLocalName()))
+				.flatMap(node -> node.getChildren().stream())
+				.map(DOMNode::getTextContent)
+				.filter(Objects::nonNull)
+				.map(String::trim)
+				.filter(s -> !s.isEmpty())
+				.findFirst();
+		Optional<String> artifactId = grandParent == null ? Optional.empty() : grandParent.getChildren().stream()
+				.filter(DOMNode::isElement)
+				.filter(node -> "artifactId".equals(node.getLocalName()))
+				.flatMap(node -> node.getChildren().stream())
+				.map(DOMNode::getTextContent)
+				.filter(Objects::nonNull)
+				.map(String::trim)
+				.filter(s -> !s.isEmpty())
+				.findFirst();
 		switch (parent.getLocalName()) {
 		case "scope":
 			collectSimpleCompletionItems(Arrays.asList(DependencyScope.values()), DependencyScope::getName,
@@ -113,11 +123,46 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 					phase -> phase.description, request).forEach(response::addCompletionAttribute);
 			break;
 		case "groupId":
-			if (!parent.getParentElement().getLocalName().equals("parent") && !parent.getParentElement().getLocalName().equals("plugin")) {
-				collectSimpleCompletionItems(localRepositorySearcher.searchGroupIds(RepositorySystem.defaultUserLocalRepository),
+			if (isParentDeclaration) {
+				// TODO local
+				collectParentCompletion(request, response);
+			} else {
+				// TODO if artifactId is set and match existing content, suggest only matching groupId
+				collectSimpleCompletionItems(isPlugin ? localRepositorySearcher.searchPluginGroupIds() : localRepositorySearcher.searchGroupIds(),
 						Function.identity(), Function.identity(), request).forEach(response::addCompletionAttribute);
+				internalCollectRemoteGAVCompletion(request, isPlugin).forEach(response::addCompletionItem);
 			}
 			break;
+		case "artifactId":
+			if (isParentDeclaration) {
+				// TODO local
+				collectParentCompletion(request, response);
+			} else {
+				(isPlugin ? localRepositorySearcher.getLocalPluginArtifacts() : localRepositorySearcher.getLocalArtifactsLastVersion()).keySet().stream()
+					.filter(groupIdArtifactId -> !groupId.isPresent() || groupIdArtifactId.groupId.equals(groupId.get()))
+					.map(groupIdartifactId -> groupIdartifactId.artifactId)
+					.distinct()
+					// TODO pass description as documentation
+					// TODO complete groupId if missing
+					// TODO? complete version
+					.map(artifact -> toCompletionItem(artifact, null, request.getReplaceRange()))
+					.forEach(response::addCompletionItem);
+				internalCollectRemoteGAVCompletion(request, isPlugin).forEach(response::addCompletionItem);
+			}
+			break;
+		case "version":
+			if (!isParentDeclaration) {
+				if (artifactId.isPresent()) {
+					localRepositorySearcher.getLocalArtifactsLastVersion().entrySet().stream()
+						.filter(entry -> entry.getKey().artifactId.equals(artifactId.get()))
+						.filter(entry -> !groupId.isPresent() || entry.getKey().groupId.equals(groupId.get()))
+						.findAny()
+						.map(Entry::getValue)
+						.map(version -> toCompletionItem(version.toString(), null, request.getReplaceRange()))
+						.ifPresent(response::addCompletionItem);
+					internalCollectRemoteGAVCompletion(request, isPlugin).forEach(response::addCompletionItem);
+				}
+			}
 		case "module":
 			collectSubModuleCompletion(request, response);
 			break;
@@ -173,8 +218,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 
 	private Collection<CompletionItem> collectLocalArtifacts(ICompletionRequest request) {
 		try {
-			Map<Entry<String, String>, ArtifactVersion> groupIdArtifactIdToVersion = localRepositorySearcher
-					.getLocalArtifacts(RepositorySystem.defaultUserLocalRepository);
+			Map<GroupIdArtifactId, ArtifactVersion> groupIdArtifactIdToVersion = localRepositorySearcher.getLocalArtifactsLastVersion();
 			final DOMDocument xmlDocument = request.getXMLDocument();
 			final int requestOffset = request.getOffset();
 			int insertionOffset = requestOffset;
@@ -207,16 +251,16 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			List<CompletionItem> completionItems = new ArrayList<CompletionItem>(groupIdArtifactIdToVersion.size());
 			groupIdArtifactIdToVersion.forEach((groupIdArtifactId, version) -> {
 				CompletionItem item = new CompletionItem();
-				item.setLabel(groupIdArtifactId.getValue() + " - " + groupIdArtifactId.getKey() + ':'
-						+ groupIdArtifactId.getValue());
+				item.setLabel(groupIdArtifactId.artifactId + " - " + groupIdArtifactId.groupId + ':'
+						+ groupIdArtifactId.groupId);
 				// TODO: deal with indentation
 				try {
 					item.setTextEdit(new TextEdit(
 							new Range(xmlDocument.positionAt(theInsertionOffset),
 									xmlDocument.positionAt(requestOffset)),
 							refIndent + "<dependency>" + delim + refIndent + indentString + "<groupId>"
-									+ groupIdArtifactId.getKey() + "</groupId>" + delim + refIndent + indentString
-									+ "<artifactId>" + groupIdArtifactId.getValue() + "</artifactId>" + delim
+									+ groupIdArtifactId.groupId + "</groupId>" + delim + refIndent + indentString
+									+ "<artifactId>" + groupIdArtifactId.artifactId + "</artifactId>" + delim
 									+ refIndent + indentString + "<version>" + version.toString() + "</version>" + delim
 									+ refIndent + "</dependency>" + delim + refIndent));
 				} catch (BadLocationException e) {
@@ -283,34 +327,29 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		}).collect(Collectors.toList());
 	}
 	
-	private void internalCollectRemoteGAVCompletion(ICompletionRequest request, ICompletionResponse response,
-			boolean onlyPlugins) {
+	private Collection<CompletionItem> internalCollectRemoteGAVCompletion(ICompletionRequest request,	boolean onlyPlugins) {
 		DOMElement node = request.getParentElement();
 		DOMDocument doc = request.getXMLDocument();
 
 		Range range = XMLPositionUtility.createRange(node.getStartTagCloseOffset() + 1, node.getEndTagOpenOffset(),
 				doc);
-
-		Artifact artifactToSearch = VersionValidator.parseArtifact(node);
+		List<String> remoteArtifactRepositories = Collections.singletonList(RemoteRepositoryIndexSearcher.CENTRAL_REPO.getUrl());
+		Dependency artifactToSearch = MavenParseUtils.parseArtifact(node);
 		MavenProject project = cache.getLastSuccessfulMavenProject(doc);
-		if (project == null) {
-			return;
+		if (project != null) {
+			remoteArtifactRepositories = project.getRemoteArtifactRepositories().stream().map(ArtifactRepository::getUrl).collect(Collectors.toList());
 		}
 		Collection<CompletionItem> items = Collections.synchronizedSet(new LinkedHashSet<>());
 		try {
-			CompletableFuture.allOf(project.getRemoteArtifactRepositories().stream().map(repository -> {
-				final CompletionItem updatingItem = new CompletionItem("Updating index for " + repository.getUrl());
+			CompletableFuture.allOf(remoteArtifactRepositories.stream().map(repository -> {
+				final CompletionItem updatingItem = new CompletionItem("Updating index for " + repository);
 				updatingItem.setPreselect(true);
 				updatingItem.setInsertText("");
+				updatingItem.setKind(CompletionItemKind.Event);
 				items.add(updatingItem);
-				return indexSearcher.getIndexingContext(URI.create(repository.getUrl())).thenAccept(index -> {
+				return indexSearcher.getIndexingContext(URI.create(repository)).thenAccept(index -> {
 					switch (node.getLocalName()) {
 					case "groupId":
-						if (artifactToSearch.getGroupId().equals(VersionValidator.placeholderArtifact.getGroupId())) {
-							// Don't do a remote groupId search if the user hasn't inputed anything as there
-							// will be too many results
-							return;
-						}
 						// TODO: just pass only plugins boolean, and make getGroupId's accept a boolean parameter
 						if (onlyPlugins) {
 							indexSearcher.getPluginGroupIds(artifactToSearch, index).stream()
@@ -336,11 +375,11 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 					case "version":
 						if (onlyPlugins) {
 							indexSearcher.getPluginArtifactVersions(artifactToSearch, index).stream()
-									.map(version -> toCompletionItem(version, "Artifact Version", range))
+									.map(version -> toCompletionItem(version.toString(), "Artifact Version", range))
 									.forEach(items::add);
 						} else {
 							indexSearcher.getArtifactVersions(artifactToSearch, index).stream()
-									.map(version -> toCompletionItem(version, "Artifact Version", range))
+									.map(version -> toCompletionItem(version.toString(), "Artifact Version", range))
 									.forEach(items::add);
 						}
 						return;
@@ -352,15 +391,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		} catch (TimeoutException e) {
 			// nothing to log, some work still pending
 		}
-		items.forEach(response::addCompletionItem);
-	}
-
-	private void collectRemoteGAVCompletion(ICompletionRequest request, ICompletionResponse response) {
-		internalCollectRemoteGAVCompletion(request, response, false);
-	}
-	
-	private void collectRemotePluginGAVCompletion(ICompletionRequest request, ICompletionResponse response) {
-		internalCollectRemoteGAVCompletion(request, response, true);
+		return items;
 	}
 
 	private void collectSubModuleCompletion(ICompletionRequest request, ICompletionResponse response) {

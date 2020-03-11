@@ -18,11 +18,11 @@ import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.AbstractMap.SimpleEntry;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -30,17 +30,55 @@ import org.apache.maven.artifact.versioning.ArtifactVersion;
 import org.apache.maven.artifact.versioning.DefaultArtifactVersion;
 
 public class LocalRepositorySearcher {
+	
+	public static final class GroupIdArtifactId {
+		public final String groupId;
+		public final String artifactId;
+		
+		public GroupIdArtifactId(String groupId, String artifactId) {
+			this.groupId = groupId;
+			this.artifactId = artifactId;
+		}
 
-	private Map<File, Map<Entry<String, String>, ArtifactVersion>> cache = new HashMap<File, Map<Entry<String,String>,ArtifactVersion>>();
+		@Override
+		public boolean equals(Object obj) {
+			return obj != null &&
+				obj instanceof GroupIdArtifactId &&
+				Objects.equals(this.groupId, ((GroupIdArtifactId)obj).groupId) &&
+				Objects.equals(this.artifactId, ((GroupIdArtifactId)obj).artifactId);
+		}
 
-	public Set<String> searchGroupIds(File localRepository) throws IOException {
-		return getLocalArtifacts(localRepository).keySet().stream().map(Entry::getKey).collect(Collectors.toSet());
+		@Override
+		public int hashCode() {
+			return Objects.hash(this.groupId, this.artifactId);
+		}
+	}
+	
+	private File localRepository;
+
+	public LocalRepositorySearcher(File localRepository) {
+		this.localRepository = localRepository;
+		
 	}
 
-	public Map<Entry<String, String>, ArtifactVersion> getLocalArtifacts(File localRepository) throws IOException {
-		Map<Entry<String, String>, ArtifactVersion> res = cache.get(localRepository);
+	private Map<File, Map<GroupIdArtifactId, ArtifactVersion>> cache = new HashMap<>();
+
+	public Set<String> searchGroupIds() throws IOException {
+		return getLocalArtifactsLastVersion().keySet().stream().map(ga -> ga.groupId).distinct().collect(Collectors.toSet());
+	}
+
+	public Set<String> searchPluginGroupIds() throws IOException {
+		return getLocalPluginArtifacts().keySet().stream().map(ga -> ga.groupId).distinct().collect(Collectors.toSet());
+	}
+
+	public Map<GroupIdArtifactId, ArtifactVersion> getLocalPluginArtifacts() throws IOException {
+		return getLocalArtifactsLastVersion().entrySet().stream().filter(entry -> entry.getKey().artifactId.contains("-plugin")).collect(Collectors.toMap(Entry::getKey, Entry::getValue));
+	}
+
+	public Map<GroupIdArtifactId, ArtifactVersion> getLocalArtifactsLastVersion() throws IOException {
+		Map<GroupIdArtifactId, ArtifactVersion> res = cache.get(localRepository);
 		if (res == null) {
-			res = computeLocalArtifacts(localRepository);
+			res = computeLocalArtifacts();
 			Path localRepoPath = localRepository.toPath();
 			WatchService watchService = localRepoPath.getFileSystem().newWatchService();
 			localRepoPath.register(watchService, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_DELETE);
@@ -60,9 +98,9 @@ public class LocalRepositorySearcher {
 		return res;
 	}
 
-	public Map<Entry<String, String>, ArtifactVersion> computeLocalArtifacts(File localRepository) throws IOException {
+	public Map<GroupIdArtifactId, ArtifactVersion> computeLocalArtifacts() throws IOException {
 		final Path repoPath = localRepository.toPath();
-		Map<Entry<String, String>, ArtifactVersion> groupIdArtifactIdToVersion = new HashMap<>();
+		Map<GroupIdArtifactId, ArtifactVersion> groupIdArtifactIdToVersion = new HashMap<>();
 		Files.walkFileTree(repoPath, Collections.emptySet(), 10, new SimpleFileVisitor<Path>() { 
 			@Override
 			public FileVisitResult preVisitDirectory(Path file, BasicFileAttributes attrs) throws IOException {
@@ -74,7 +112,7 @@ public class LocalRepositorySearcher {
 					ArtifactVersion version = new DefaultArtifactVersion(artifactFolderPath.getFileName().toString());
 					String artifactId = artifactFolderPath.getParent().getFileName().toString();
 					String groupId = artifactFolderPath.getParent().getParent().toString().replace(artifactFolderPath.getFileSystem().getSeparator(), ".");
-					Entry<String, String> groupIdArtifactId = new SimpleEntry<>(groupId, artifactId);
+					GroupIdArtifactId groupIdArtifactId = new GroupIdArtifactId(groupId, artifactId);
 					ArtifactVersion existingVersion = groupIdArtifactIdToVersion.get(groupIdArtifactId);
 					if (existingVersion == null || existingVersion.compareTo(version) < 0 || (!version.toString().endsWith("-SNAPSHOT") && existingVersion.toString().endsWith("-SNAPSHOT"))) {
 						groupIdArtifactIdToVersion.put(groupIdArtifactId, version);

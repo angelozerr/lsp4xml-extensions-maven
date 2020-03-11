@@ -12,6 +12,7 @@ import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.DefaultArtifact;
 import org.apache.maven.artifact.handler.DefaultArtifactHandler;
 import org.apache.maven.artifact.versioning.OverConstrainedVersionException;
+import org.apache.maven.model.Dependency;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DiagnosticSeverity;
 import org.eclipse.lsp4j.Range;
@@ -20,67 +21,25 @@ import org.eclipse.lsp4xml.dom.DOMNode;
 
 public class VersionValidator {
 
-	public static final Artifact placeholderArtifact = new DefaultArtifact("MissingGroupID", "MissingArtifactID",
-			"1.0.0", "compile", "jar", null, new DefaultArtifactHandler("jar"));
-
-	public static Artifact parseArtifact(DOMNode node) {
-		String groupId = placeholderArtifact.getGroupId();
-		String artifactId = placeholderArtifact.getArtifactId();
-		String version = placeholderArtifact.getVersion();
-		String scope = placeholderArtifact.getScope();
-		String type = placeholderArtifact.getType();
-		String classifier = placeholderArtifact.getClassifier();
-		try {
-			for (DOMNode tag : node.getParentElement().getChildren()) {
-				if (tag != null && tag.hasChildNodes() && !tag.getChild(0).getNodeValue().trim().isEmpty()) {
-					switch (tag.getLocalName()) {
-					case "groupId":
-						groupId = tag.getChild(0).getNodeValue();
-						break;
-					case "artifactId":
-						artifactId = tag.getChild(0).getNodeValue();
-						break;
-					case "version":
-						version = tag.getChild(0).getNodeValue();
-						break;
-					case "scope":
-						scope = tag.getChild(0).getNodeValue();
-						break;
-					case "type":
-						type = tag.getChild(0).getNodeValue();
-						break;
-					case "classifier":
-						classifier = tag.getChild(0).getNodeValue();
-						break;
-					}
-				}
-
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
-			System.out.println("Error parsing Artifact");
-		}
-		return new DefaultArtifact(groupId, artifactId, version, scope, type, classifier,
-				new DefaultArtifactHandler(type));
-	}
-
 	public static Diagnostic validateVersion(DiagnosticRequest diagnosticRequest) {
 		DOMNode node = diagnosticRequest.getNode();
 		DOMDocument xmlDocument = diagnosticRequest.getDOMDocument();
-		Artifact artifact = parseArtifact(node);
-		Diagnostic diagnostic = null;
+		Dependency model = MavenParseUtils.parseArtifact(node);
+		Artifact artifact = null;
 		Range range = diagnosticRequest.getRange();
+		Diagnostic diagnostic = null;
 		try {
-			// TODO: This class doesn't work as intended - isSelectedVersionKnown() doesn't
-			// actually verify the version is legal
-			if (!artifact.isSelectedVersionKnown()) {
+			 artifact = new DefaultArtifact(model.getGroupId(), model.getArtifactId(), model.getVersion(), model.getScope(), model.getType(), model.getClassifier(), new DefaultArtifactHandler(model.getType()));
+			 if (!artifact.isSelectedVersionKnown()) {
 				diagnostic = new Diagnostic(range, "Version Error", DiagnosticSeverity.Error,
 						xmlDocument.getDocumentURI(), "XML");
 				diagnosticRequest.getDiagnostics().add(diagnostic);
 			}
-		} catch (OverConstrainedVersionException e) {
-			// TODO: Use plug-in error logger
+		} catch (Exception e) {
 			e.printStackTrace();
+			diagnostic = new Diagnostic(range, e.getMessage(), DiagnosticSeverity.Error,
+					xmlDocument.getDocumentURI(), "XML");
+			diagnosticRequest.getDiagnostics().add(diagnostic);
 		}
 		return diagnostic;
 	}
