@@ -8,6 +8,7 @@
  *******************************************************************************/
 package org.eclipse.lsp4xml.extensions.maven;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
@@ -26,7 +27,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import org.apache.maven.Maven;
@@ -34,16 +34,17 @@ import org.apache.maven.artifact.repository.ArtifactRepository;
 import org.apache.maven.artifact.versioning.ArtifactVersion;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.Model;
+import org.apache.maven.model.io.xpp3.MavenXpp3Writer;
 import org.apache.maven.plugin.MavenPluginManager;
 import org.apache.maven.plugin.descriptor.MojoDescriptor;
 import org.apache.maven.plugin.descriptor.PluginDescriptor;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.repository.RepositorySystem;
-import org.checkerframework.checker.units.qual.s;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
 import org.eclipse.lsp4j.InsertTextFormat;
 import org.eclipse.lsp4j.MarkupContent;
+import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.TextEdit;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
@@ -88,6 +89,9 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 
 	@Override
 	public void onXMLContent(ICompletionRequest request, ICompletionResponse response) throws Exception {
+		if (request.getXMLDocument().getText().length() < 2) {
+			response.addCompletionItem(createMinimalPOMCompletionSnippet(request));
+		}
 		DOMElement parent = request.getParentElement();
 		if (parent == null || parent.getLocalName() == null) {
 			return;
@@ -194,6 +198,21 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		if (request.getNode().isText()) {
 			completeProperties(request).forEach(response::addCompletionAttribute);
 		}
+	}
+
+	private CompletionItem createMinimalPOMCompletionSnippet(ICompletionRequest request) throws IOException, BadLocationException {
+		CompletionItem item = new CompletionItem("minimal pom content");
+		item.setKind(CompletionItemKind.Snippet);
+		item.setInsertTextFormat(InsertTextFormat.Snippet);
+		Model model = new Model();
+		model.setArtifactId("$0");
+		MavenXpp3Writer writer = new MavenXpp3Writer();
+		try (ByteArrayOutputStream stream = new ByteArrayOutputStream()) {
+			writer.write(stream, model);
+			TextEdit textEdit = new TextEdit(new Range(new Position(0, 0), request.getXMLDocument().positionAt(request.getXMLDocument().getText().length())), new String(stream.toByteArray()));
+			item.setTextEdit(textEdit);
+		}
+		return item;
 	}
 
 	private Collection<CompletionItem> collectGoals(ICompletionRequest request) {
