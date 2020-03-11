@@ -21,9 +21,12 @@ import java.util.concurrent.ExecutionException;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
+import org.eclipse.lsp4j.Hover;
+import org.eclipse.lsp4j.MarkupContent;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.TextDocumentItem;
+import org.eclipse.lsp4j.TextDocumentPositionParams;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -85,6 +88,20 @@ public class RemoteRepositoryTest {
 		assertTrue(completionContains(items, desiredCompletion));
 	}
 
+	@Test(timeout=15000)
+ 	public void testRemoteArtifactHover() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
+ 		TextDocumentItem textDocumentItem = MavenLemminxTestsUtils.createTextDocumentItem("/pom-remote-artifact-hover.xml");
+ 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+ 		connection.languageServer.getTextDocumentService().didOpen(params);
+ 		Hover hover;
+ 		TextDocumentPositionParams pos = new TextDocumentPositionParams( new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(14, 6));
+ 		do {
+ 	 		hover = connection.languageServer.getTextDocumentService().hover(pos).get();
+ 		} while ((((MarkupContent) hover.getContents().getRight()).getValue().contains("Updating")));
+ 		assertTrue((((MarkupContent) hover.getContents().getRight()).getValue().contains("Converts between version 3.0.0 and version 4.0.0 models.")));
+
+	}
+	
 	@Test(timeout=120000)
 	public void testRemotePluginGroupIdCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-remote-plugin-groupId-complete.xml");
