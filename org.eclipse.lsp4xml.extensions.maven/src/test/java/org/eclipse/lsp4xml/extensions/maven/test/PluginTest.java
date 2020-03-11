@@ -16,6 +16,7 @@ import java.net.URISyntaxException;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionList;
@@ -116,6 +117,21 @@ public class PluginTest {
  		TextDocumentPositionParams pos = new TextDocumentPositionParams( new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(18, 18));
  		Hover hover = connection.languageServer.getTextDocumentService().hover(pos).get();
  		assertTrue(((MarkupContent) hover.getContents().getRight()).getValue().contains("determines the duplicate declared dependencies."));
+
+	}
+	
+	@Test(timeout=15000)
+ 	public void testPluginArtifactHover() throws IOException, InterruptedException, ExecutionException, URISyntaxException, TimeoutException {
+ 		TextDocumentItem textDocumentItem = MavenLemminxTestsUtils.createTextDocumentItem("/pom-plugin-artifact-hover.xml");
+ 		DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+ 		connection.languageServer.getTextDocumentService().didOpen(params);
+ 		Hover hover;
+ 		TextDocumentPositionParams pos = new TextDocumentPositionParams( new TextDocumentIdentifier(textDocumentItem.getUri()), new Position(14, 6));
+ 		do {
+ 	 		hover = connection.languageServer.getTextDocumentService().hover(pos).get();
+ 		} while ((((MarkupContent) hover.getContents().getRight()).getValue().contains("Updating")));
+		assertTrue((((MarkupContent) hover.getContents().getRight()).getValue()
+				.contains("Provides a maven plugin that supports creating an OSGi bundle")));
 
 	}
 }

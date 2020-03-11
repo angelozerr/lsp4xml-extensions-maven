@@ -75,7 +75,7 @@ public class MavenPlugin implements IXMLExtension {
 		diagnosticParticipant = new MavenDiagnosticParticipant(cache);
 		registry.registerDiagnosticsParticipant(diagnosticParticipant);
 		try {
-			hoverParticipant = new MavenHoverParticipant(cache, (MavenPluginManager) container.lookup(MavenPluginManager.class));
+			hoverParticipant = new MavenHoverParticipant(cache, indexSearcher, (MavenPluginManager) container.lookup(MavenPluginManager.class));
 			registry.registerHoverParticipant(hoverParticipant);
 		} catch (ComponentLookupException e) {
 			e.printStackTrace();
