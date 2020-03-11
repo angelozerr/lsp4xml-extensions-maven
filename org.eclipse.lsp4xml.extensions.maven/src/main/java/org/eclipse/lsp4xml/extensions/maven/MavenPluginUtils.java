@@ -31,12 +31,18 @@ import org.eclipse.lsp4xml.dom.DOMNode;
 import org.eclipse.lsp4xml.services.extensions.IPositionRequest;
 
 public class MavenPluginUtils {
+	
+	private static final String LINE_BREAK = "<br/>";
+
+	private MavenPluginUtils() {
+		// Utility class, not meant to be instantiated
+	}
 
 	public static MarkupContent getMarkupDescription(Parameter parameter) {
 		return new MarkupContent("markdown",
-				"**required:** " + parameter.getRequirement() + "\n" + "**Type:** " + parameter.getType() + "\n"
-						+ "Expression: " + parameter.getExpression() + "Default Value: " + parameter.getDefaultValue()
-						+ "\n" + parameter.getDescription());
+				"**required:** " + parameter.getRequirement() + LINE_BREAK + "**Type:** " + parameter.getType() + LINE_BREAK
+						+ "Expression: " + parameter.getExpression() + LINE_BREAK + "Default Value: " + parameter.getDefaultValue()
+						+ LINE_BREAK + parameter.getDescription());
 	}
 
 	public static List<Parameter> collectPluginConfigurationParameters(IPositionRequest request,
