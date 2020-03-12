@@ -1,6 +1,6 @@
 # lsp4xml-extensions-maven
 
-This project is a LSP4XML Extension for Maven. It provides :
+This project is an Eclipse LemMinX (XML Language Server) Extension for Maven. It provides :
 
 - completion for:
   - dependency/scope (test, provided, runtime, etc)
@@ -48,7 +48,7 @@ A sample of call of JDT / m2e feature is to support completion for artifactId wh
 
 ## Improvement TODO
 
-### On LSP4XML
+### On Eclipse LemMinX
 
 For some features, like completion for groupId, artifactId, version (let's call this feature `searchArtifact`), LSP4XML maven extension must delegate this search by JDT / m2e (vscode-maven provides already this support with JDT LS delegate command handler that we could re-use it). The first idea that we have is `let's LSP4XML maven extension communicate with JDT / m2e` but it's a bad idea:
 
@@ -102,7 +102,7 @@ On vscode context, vscode-xml provides the capability to contribute to LSP4XML w
 }
 ```
 
-When LSP4XML XML Language server is started, the `your-custom-xml-extension.jar` is added in the classpath and the extension is loaded by using Java SPI. See [here](https://github.com/redhat-developer/vscode-xml#custom-xml-extensions) for more information.
+When Eclipse LemMinX XML Language server is started, the `your-custom-xml-extension.jar` is added in the classpath and the extension is loaded by using Java SPI. See [here](https://github.com/redhat-developer/vscode-xml#custom-xml-extensions) for more information.
 
 #### Eclipse IDE context
 
@@ -110,9 +110,9 @@ When LSP4XML XML Language server is started, the `your-custom-xml-extension.jar`
 
 As Java SPI is used to load extension in LSP4XML, in Eclipse IDE context we can use OSGi support:
 
-- LSP4XML must become an OSGi bundle.
-- LSP4XML maven extension must become an OSGi fragment of the LSP4XML.
-- Wild Web Developer [org.eclipse.wildwebdeveloper.xml](https://github.com/eclipse/wildwebdeveloper/tree/master/org.eclipse.wildwebdeveloper.xml) imports the LSP4XML OSGI bundle instead of embeds the LSP4XML JAR.
+- LemMinX must become an OSGi bundle.
+- LemMinX maven extension must become an OSGi fragment of the LSP4XML.
+- Wild Web Developer [org.eclipse.wildwebdeveloper.xml](https://github.com/eclipse/wildwebdeveloper/tree/master/org.eclipse.wildwebdeveloper.xml) imports the LemMinX OSGI bundle instead of embeds the LemMinX JAR.
 
 Here Pros and cons:
 
@@ -121,7 +121,7 @@ Here Pros and cons:
 - Cons:
   - user cannot desactivate the installed extension (from a preferences pages).
   - user cannot add a new extension (from a preferences pages).
-  - LSP4XML should become an OSGi bundle (maven build is not simple and it takes time to build the OSGi with pax)
+  - LemMinX should become an OSGi bundle (maven build is not simple and it takes time to build the OSGi with pax)
 
 ##### Generate proper classpath
 
