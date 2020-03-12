@@ -32,7 +32,7 @@ import org.eclipse.lsp4xml.services.extensions.IPositionRequest;
 
 public class MavenPluginUtils {
 	
-	private static final String LINE_BREAK = "<br/>";
+	private static final String LINE_BREAK = "\n\n";
 
 	private MavenPluginUtils() {
 		// Utility class, not meant to be instantiated
