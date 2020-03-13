@@ -1,13 +1,12 @@
 name: PR CI
 
-on: 
+on:
   pull_request:
     branches:
-    - master
+      - master
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
