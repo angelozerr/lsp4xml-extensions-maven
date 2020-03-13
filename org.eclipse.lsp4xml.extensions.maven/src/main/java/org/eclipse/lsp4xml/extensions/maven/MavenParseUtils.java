@@ -8,9 +8,6 @@
  *******************************************************************************/
 package org.eclipse.lsp4xml.extensions.maven;
 
-import org.apache.maven.artifact.Artifact;
-import org.apache.maven.artifact.DefaultArtifact;
-import org.apache.maven.artifact.handler.DefaultArtifactHandler;
 import org.apache.maven.model.Dependency;
 import org.eclipse.lsp4xml.dom.DOMNode;
 
@@ -18,10 +15,17 @@ public class MavenParseUtils {
 
 	public static Dependency parseArtifact(DOMNode node) {
 		Dependency res = new Dependency();
+		if (node == null) {
+			return res;
+		}
 		try {
 			for (DOMNode tag : node.getParentElement().getChildren()) {
-				if (tag != null && tag.hasChildNodes() && !tag.getChild(0).getNodeValue().trim().isEmpty()) {
-					String value = tag.getChild(0).getNodeValue(); 
+				if (tag != null && tag.hasChildNodes() && tag.getChild(0).isElement()) {
+					String value = tag.getChild(0).getNodeValue();
+					if (value == null) {
+						continue;
+					}
+					value = value.trim(); 
 					switch (tag.getLocalName()) {
 					case "groupId":
 						res.setGroupId(value);

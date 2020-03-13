@@ -10,7 +10,10 @@ package org.eclipse.lsp4xml.extensions.maven;
 
 import java.util.Optional;
 
+import org.eclipse.lsp4xml.commons.BadLocationException;
+import org.eclipse.lsp4xml.dom.DOMElement;
 import org.eclipse.lsp4xml.dom.DOMNode;
+import org.eclipse.lsp4xml.services.extensions.ICompletionRequest;
 import org.eclipse.lsp4xml.services.extensions.IPositionRequest;
 
 public class DOMUtils {
@@ -37,5 +40,17 @@ public class DOMUtils {
 	public static Optional<String> findChildElementText(DOMNode pluginNode, final String elementName) {
 		return pluginNode.getChildren().stream().filter(node -> elementName.equals(node.getLocalName()))
 				.flatMap(node -> node.getChildren().stream()).findAny().map(DOMNode::getTextContent).map(String::trim);
+	}
+
+	static String getOneLevelIndent(ICompletionRequest request) throws BadLocationException {
+		String oneLevelIndent = request.getLineIndentInfo().getWhitespacesIndent();
+		int nodeDepth = 0;
+		DOMElement element = request.getParentElement();
+		while (element != null) {
+			nodeDepth++;
+			element = element.getParentElement();
+		}
+		oneLevelIndent = oneLevelIndent.substring(0, oneLevelIndent.length() / nodeDepth);
+		return oneLevelIndent;
 	}
 }
