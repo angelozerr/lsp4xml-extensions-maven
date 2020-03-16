@@ -21,16 +21,15 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import org.apache.maven.artifact.InvalidRepositoryException;
 import org.apache.maven.artifact.repository.ArtifactRepository;
 import org.apache.maven.artifact.repository.ArtifactRepositoryPolicy;
-import org.apache.maven.artifact.repository.DefaultArtifactRepository;
 import org.apache.maven.artifact.repository.MavenArtifactRepository;
 import org.apache.maven.artifact.repository.layout.DefaultRepositoryLayout;
-import org.apache.maven.building.Source;
 import org.apache.maven.execution.DefaultMavenExecutionRequest;
 import org.apache.maven.execution.MavenExecutionRequest;
 import org.apache.maven.internal.aether.DefaultRepositorySystemSessionFactory;
@@ -40,7 +39,6 @@ import org.apache.maven.model.building.DefaultModelProblem;
 import org.apache.maven.model.building.FileModelSource;
 import org.apache.maven.model.building.ModelBuildingException;
 import org.apache.maven.model.building.ModelProblem;
-import org.apache.maven.model.building.ModelSource2;
 import org.apache.maven.model.building.ModelProblem.Severity;
 import org.apache.maven.model.building.ModelProblem.Version;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
@@ -107,12 +105,41 @@ public class MavenProjectCache {
 	private void check(DOMDocument document) {
 		Integer last = lastCheckedVersion.get(URI.create(document.getTextDocument().getUri()));
 		if (last == null || last.intValue() < document.getTextDocument().getVersion()) {
-			parse(document);
+			parseAndCache(document);
 
 		}
 	}
 
-	private void parse(DOMDocument document) {
+	public Optional<MavenProject> getSnapshotProject(File file) {
+		MavenProject lastKnownVersionMavenProject = projectCache.get(file.toURI());
+		if (lastKnownVersionMavenProject != null) {
+			return Optional.of(lastKnownVersionMavenProject);
+		}
+		if (mavenRequest == null) {
+			try {
+				initializeMavenBuildState();
+			} catch (ComponentLookupException | InvalidRepositoryException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+		ProjectBuildingRequest request = new DefaultProjectBuildingRequest();
+		request.setLocalRepository(mavenRequest.getLocalRepository());
+		request.setRepositorySession(getRepositorySystemSession());
+		try {
+			MavenProject project = projectBuilder.build(file, request).getProject();
+			return Optional.of(project);
+		} catch (ProjectBuildingException e) {
+			List<ProjectBuildingResult> result = e.getResults();
+			if (result != null && result.size() == 1 && result.get(0).getProject() != null) {
+				MavenProject project = result.get(0).getProject();
+				return Optional.of(project);
+			}
+		}
+		return Optional.empty();
+	}
+
+	private void parseAndCache(DOMDocument document) {
 		URI uri = URI.create(document.getDocumentURI());
 		Collection<ModelProblem> problems = new ArrayList<ModelProblem>();
 		try {

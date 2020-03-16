@@ -31,7 +31,7 @@ import org.apache.maven.artifact.versioning.DefaultArtifactVersion;
 
 public class LocalRepositorySearcher {
 	
-	public static final class GroupIdArtifactId {
+	public static class GroupIdArtifactId {
 		public final String groupId;
 		public final String artifactId;
 		
@@ -43,7 +43,7 @@ public class LocalRepositorySearcher {
 		@Override
 		public boolean equals(Object obj) {
 			return obj != null &&
-				obj instanceof GroupIdArtifactId &&
+				obj.getClass() == getClass() &&
 				Objects.equals(this.groupId, ((GroupIdArtifactId)obj).groupId) &&
 				Objects.equals(this.artifactId, ((GroupIdArtifactId)obj).artifactId);
 		}
@@ -53,7 +53,7 @@ public class LocalRepositorySearcher {
 			return Objects.hash(this.groupId, this.artifactId);
 		}
 	}
-	
+
 	private File localRepository;
 
 	public LocalRepositorySearcher(File localRepository) {

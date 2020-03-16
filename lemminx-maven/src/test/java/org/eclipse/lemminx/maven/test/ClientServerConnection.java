@@ -92,7 +92,6 @@ public class ClientServerConnection {
 			}
 		} while (!res && System.currentTimeMillis() - start < timeoutMilliseconds);
 		return res;
-
 	}
 
 }
