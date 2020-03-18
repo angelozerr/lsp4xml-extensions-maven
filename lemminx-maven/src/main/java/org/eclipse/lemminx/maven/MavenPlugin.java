@@ -61,7 +61,7 @@ public class MavenPlugin implements IXMLExtension {
 		try {
 			container = newPlexusContainer();
 			cache = new MavenProjectCache(container);
-		} catch (PlexusContainerException e) {
+		} catch (Throwable e) {
 			e.printStackTrace();
 		}
 		indexSearcher = new RemoteRepositoryIndexSearcher(container);

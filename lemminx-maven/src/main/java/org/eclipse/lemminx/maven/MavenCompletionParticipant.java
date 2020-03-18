@@ -9,8 +9,10 @@
 package org.eclipse.lemminx.maven;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -41,8 +43,8 @@ import org.apache.maven.plugin.descriptor.PluginDescriptor;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.repository.RepositorySystem;
 import org.eclipse.lemminx.maven.searcher.LocalRepositorySearcher;
-import org.eclipse.lemminx.maven.searcher.RemoteRepositoryIndexSearcher;
 import org.eclipse.lemminx.maven.searcher.LocalRepositorySearcher.GroupIdArtifactId;
+import org.eclipse.lemminx.maven.searcher.RemoteRepositoryIndexSearcher;
 import org.eclipse.lemminx.maven.snippets.SnippetRegistry;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
@@ -62,9 +64,27 @@ import org.eclipse.lsp4xml.services.extensions.ICompletionRequest;
 import org.eclipse.lsp4xml.services.extensions.ICompletionResponse;
 import org.eclipse.lsp4xml.utils.XMLPositionUtility;
 
-import com.google.common.base.CaseFormat;
-
 public class MavenCompletionParticipant extends CompletionParticipantAdapter {
+
+	static interface InsertionStrategy {
+		/**
+		 * set current element value and add siblings as addition textEdits
+		 */
+		public static final InsertionStrategy ELEMENT_VALUE_AND_SIBLING = new InsertionStrategy() {};
+
+		/**
+		 * insert elements as children of the parent element
+		 */
+		public static final InsertionStrategy CHILDREN_ELEMENTS = new InsertionStrategy() {};
+		
+		public static final class NodeWithChildrenInsertionStrategy implements InsertionStrategy {
+			public final String elementName;
+			
+			public NodeWithChildrenInsertionStrategy(String elementName) {
+				this.elementName = elementName;
+			}
+		}
+	}
 
 	private boolean snippetsLoaded;
 	private final LocalRepositorySearcher localRepositorySearcher = new LocalRepositorySearcher(RepositorySystem.defaultUserLocalRepository);
@@ -118,6 +138,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 				.map(String::trim)
 				.filter(s -> !s.isEmpty())
 				.findFirst();
+		InsertionStrategy gavInsertionStrategy = computeGAVInsertionStrategy(request);
 		switch (parent.getLocalName()) {
 		case "scope":
 			collectSimpleCompletionItems(Arrays.asList(DependencyScope.values()), DependencyScope::getName,
@@ -129,26 +150,34 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			break;
 		case "groupId":
 			if (isParentDeclaration) {
-				// TODO local
-				collectParentCompletion(request, response);
+				Optional<MavenProject> filesystem = computeFilesystemParent(request);
+				if (filesystem.isPresent()) {
+					filesystem.map(mavenProject -> toGAVCompletionItem(new GroupIdArtifactId(mavenProject.getGroupId(), mavenProject.getArtifactId()), new DefaultArtifactVersion(mavenProject.getVersion()), mavenProject.getDescription(), request, null)).ifPresent(response::addCompletionItem);
+				}
+				// TODO localRepo
+				// TODO remoteRepos
 			} else {
 				// TODO if artifactId is set and match existing content, suggest only matching groupId
 				collectSimpleCompletionItems(isPlugin ? localRepositorySearcher.searchPluginGroupIds() : localRepositorySearcher.searchGroupIds(),
 						Function.identity(), Function.identity(), request).forEach(response::addCompletionAttribute);
-				internalCollectRemoteGAVCompletion(request, isPlugin, false).forEach(response::addCompletionItem);
+				internalCollectRemoteGAVCompletion(request, isPlugin, gavInsertionStrategy).forEach(response::addCompletionItem);
 			}
 			break;
 		case "artifactId":
 			if (isParentDeclaration) {
-				// TODO local
-				collectParentCompletion(request, response);
+				Optional<MavenProject> filesystem = computeFilesystemParent(request);
+				if (filesystem.isPresent()) {
+					filesystem.map(mavenProject -> toGAVCompletionItem(new GroupIdArtifactId(mavenProject.getGroupId(), mavenProject.getArtifactId()), new DefaultArtifactVersion(mavenProject.getVersion()), mavenProject.getDescription(), request, InsertionStrategy.ELEMENT_VALUE_AND_SIBLING)).ifPresent(response::addCompletionItem);
+				}
+				// TODO localRepo
+				// TODO remoteRepos
 			} else {
 				(isPlugin ? localRepositorySearcher.getLocalPluginArtifacts() : localRepositorySearcher.getLocalArtifactsLastVersion()).entrySet().stream()
 					.filter(entry -> !groupId.isPresent() || entry.getKey().groupId.equals(groupId.get()))
 					// TODO pass description as documentation
-					.map(entry -> toGAVCompletionItem(entry.getKey(), entry.getValue(), null, request, null))
+					.map(entry -> toGAVCompletionItem(entry.getKey(), entry.getValue(), null, request, InsertionStrategy.ELEMENT_VALUE_AND_SIBLING))
 					.forEach(response::addCompletionItem);
-				internalCollectRemoteGAVCompletion(request, isPlugin, false).forEach(response::addCompletionItem);
+				internalCollectRemoteGAVCompletion(request, isPlugin, gavInsertionStrategy).forEach(response::addCompletionItem);
 			}
 			break;
 		case "version":
@@ -161,27 +190,47 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 						.map(Entry::getValue)
 						.map(version -> toCompletionItem(version.toString(), null, request.getReplaceRange()))
 						.ifPresent(response::addCompletionItem);
-					internalCollectRemoteGAVCompletion(request, isPlugin, false).forEach(response::addCompletionItem);
+					internalCollectRemoteGAVCompletion(request, isPlugin, gavInsertionStrategy).forEach(response::addCompletionItem);
 				}
+			} else {
+				Optional<MavenProject> filesystem = computeFilesystemParent(request);
+				if (filesystem.isPresent()) {
+					filesystem.map(mavenProject -> toGAVCompletionItem(new GroupIdArtifactId(mavenProject.getGroupId(), mavenProject.getArtifactId()), new DefaultArtifactVersion(mavenProject.getVersion()), mavenProject.getDescription(), request, null)).ifPresent(response::addCompletionItem);
+				}
+				// TODO localRepo
+				// TODO remoteRepos
 			}
+			break;
 		case "module":
 			collectSubModuleCompletion(request, response);
 			break;
 		case "dependencies":
+		case "dependency":
 			localRepositorySearcher.getLocalArtifactsLastVersion().entrySet().stream()
 				// TODO pass description as documentation
-				.map(entry -> toGAVCompletionItem(entry.getKey(), entry.getValue(), null, request, "dependency"))
+				.map(entry -> toGAVCompletionItem(entry.getKey(), entry.getValue(), null, request, gavInsertionStrategy))
 				.forEach(response::addCompletionItem);
-			internalCollectRemoteGAVCompletion(request, false, true).forEach(response::addCompletionItem);
+			internalCollectRemoteGAVCompletion(request, false, gavInsertionStrategy).forEach(response::addCompletionItem);
 			// Break commented out for now so that snippets can be available
 			// break;
 			break;
 		case "plugins":
+		case "plugin":
 			localRepositorySearcher.getLocalPluginArtifacts().entrySet().stream()
 				// TODO pass description as documentation
-				.map(entry -> toGAVCompletionItem(entry.getKey(), entry.getValue(), null, request, "plugin"))
+				.map(entry -> toGAVCompletionItem(entry.getKey(), entry.getValue(), null, request, gavInsertionStrategy))
 				.forEach(response::addCompletionItem);
-			internalCollectRemoteGAVCompletion(request, true, true).forEach(response::addCompletionItem);
+			internalCollectRemoteGAVCompletion(request, true, gavInsertionStrategy).forEach(response::addCompletionItem);
+			break;
+		case "parent":
+			Optional<MavenProject> filesystem = computeFilesystemParent(request);
+			if (filesystem.isPresent()) {
+				filesystem.map(mavenProject -> toGAVCompletionItem(new GroupIdArtifactId(mavenProject.getGroupId(), mavenProject.getArtifactId()), new DefaultArtifactVersion(mavenProject.getVersion()), mavenProject.getDescription(), request, InsertionStrategy.CHILDREN_ELEMENTS))
+					.ifPresent(response::addCompletionItem);
+			} else {
+				// TODO localRepo
+				// TODO remoteRepos
+			}
 			break;
 		case "goal":
 			collectGoals(request).forEach(response::addCompletionItem);
@@ -212,6 +261,40 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		}
 	}
 
+	private InsertionStrategy computeGAVInsertionStrategy(ICompletionRequest request) {
+		if (request.getParentElement() == null) {
+			return null;
+		}
+		switch (request.getParentElement().getLocalName()) {
+		case "dependencies": return new InsertionStrategy.NodeWithChildrenInsertionStrategy("dependency");
+		case "dependency": return InsertionStrategy.CHILDREN_ELEMENTS;
+		case "plugins": return new InsertionStrategy.NodeWithChildrenInsertionStrategy("plugin");
+		case "plugin": return InsertionStrategy.CHILDREN_ELEMENTS;
+		case "artifactId": return InsertionStrategy.ELEMENT_VALUE_AND_SIBLING;
+		}
+		return InsertionStrategy.ELEMENT_VALUE_AND_SIBLING;
+	}
+
+	private Optional<MavenProject> computeFilesystemParent(ICompletionRequest request) {
+		Optional<String> relativePath = null;
+		if (request.getParentElement().getLocalName().equals("parent")) {
+			relativePath = DOMUtils.findChildElementText(request.getNode(), "relativePath");
+		} else {
+			relativePath = DOMUtils.findChildElementText(request.getParentElement().getParentElement(), "relativePath");
+		}
+		if (!relativePath.isPresent()) {
+			relativePath = Optional.of("..");
+		}
+		File referencedTargetPomFile = new File(new File(URI.create(request.getXMLDocument().getTextDocument().getUri())).getParentFile(), relativePath.orElse(""));
+		if (referencedTargetPomFile.isDirectory()) {
+			referencedTargetPomFile = new File(referencedTargetPomFile, Maven.POMv4);
+		}
+		if (referencedTargetPomFile.isFile()) {
+			return cache.getSnapshotProject(referencedTargetPomFile);
+		}
+		return Optional.empty();
+	}
+
 	private CompletionItem createMinimalPOMCompletionSnippet(ICompletionRequest request) throws IOException, BadLocationException {
 		CompletionItem item = new CompletionItem("minimal pom content");
 		item.setKind(CompletionItemKind.Snippet);
@@ -235,56 +318,68 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		return Collections.emptySet();
 	}
 
-	private CompletionItem toGAVCompletionItem(GroupIdArtifactId groupIdArtifactId, ArtifactVersion version, String description, ICompletionRequest request, String newWrappingNode) {
-		boolean insertGroupId = newWrappingNode != null || !DOMUtils.findChildElementText(request.getParentElement().getParentElement(), "groupId").isPresent();
-		boolean insertVersion = newWrappingNode != null || !DOMUtils.findChildElementText(request.getParentElement().getParentElement(), "version").isPresent();
+	private CompletionItem toGAVCompletionItem(GroupIdArtifactId groupIdArtifactId, ArtifactVersion version, String description, ICompletionRequest request, InsertionStrategy strategy) {
+		boolean insertGroupId = strategy instanceof org.eclipse.lemminx.maven.MavenCompletionParticipant.InsertionStrategy.NodeWithChildrenInsertionStrategy || !DOMUtils.findChildElementText(request.getParentElement().getParentElement(), "groupId").isPresent();
+		boolean insertVersion = strategy instanceof org.eclipse.lemminx.maven.MavenCompletionParticipant.InsertionStrategy.NodeWithChildrenInsertionStrategy || !DOMUtils.findChildElementText(request.getParentElement().getParentElement(), "version").isPresent();
 		CompletionItem item = new CompletionItem();
-		if (newWrappingNode == null) {
-			item.setLabel(groupIdArtifactId.artifactId);
-		} else {
-			item.setLabel(groupIdArtifactId.artifactId + " - " + groupIdArtifactId.groupId + ":" + groupIdArtifactId.artifactId + ":" + version.toString());
-		}
 		if (description != null) {
 			item.setDocumentation(description);
 		}
 		TextEdit textEdit = new TextEdit();
 		item.setTextEdit(textEdit);
-		if (!insertGroupId && !insertVersion) {
+		textEdit.setRange(request.getReplaceRange());
+		if (strategy == InsertionStrategy.ELEMENT_VALUE_AND_SIBLING) {
+			item.setLabel(groupIdArtifactId.artifactId);
 			textEdit.setRange(request.getReplaceRange());
 			textEdit.setNewText(groupIdArtifactId.artifactId);
 			item.setKind(CompletionItemKind.Value);
+			List<TextEdit> additionalEdits = new ArrayList<>(2);
+			if (insertGroupId) {
+				Position insertionPosition;
+				try {
+					insertionPosition = request.getXMLDocument().positionAt(request.getParentElement().getParentElement().getStartTagCloseOffset() + 1);
+					additionalEdits.add(new TextEdit(new Range(insertionPosition, insertionPosition), request.getLineIndentInfo().getLineDelimiter() + request.getLineIndentInfo().getWhitespacesIndent() + "<groupId>" + groupIdArtifactId.groupId + "</groupId>"));
+				} catch (BadLocationException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+			if (insertVersion) {
+				Position insertionPosition;
+				try {
+					insertionPosition = request.getXMLDocument().positionAt(request.getParentElement().getEndTagCloseOffset() + 1);
+					additionalEdits.add(new TextEdit(new Range(insertionPosition, insertionPosition), request.getLineIndentInfo().getLineDelimiter() + request.getLineIndentInfo().getWhitespacesIndent() + DOMUtils.getOneLevelIndent(request) + "<version>" + version.toString() + "</version>"));
+				} catch (BadLocationException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+			if (!additionalEdits.isEmpty()) {
+				item.setAdditionalTextEdits(additionalEdits);
+			}
 		} else {
+			item.setLabel(groupIdArtifactId.artifactId + " - " + groupIdArtifactId.groupId + ":" + groupIdArtifactId.artifactId + ":" + version.toString());
 			item.setKind(CompletionItemKind.Struct);
 			try {
-				String oneLevelIndent = DOMUtils.getOneLevelIndent(request);
-				if (newWrappingNode == null) {
-					textEdit.setRange(new Range(
-							request.getXMLDocument().positionAt(request.getParentElement().getStart()),
-							request.getXMLDocument().positionAt(request.getParentElement().getEnd())));
-				} else {
-					textEdit.setRange(request.getReplaceRange());
-				}
+				textEdit.setRange(request.getReplaceRange());
 				String newText = "";
-				if (newWrappingNode != null) {
-					newText += "<" + newWrappingNode + ">" + request.getLineIndentInfo().getLineDelimiter() + request.getLineIndentInfo().getWhitespacesIndent() + oneLevelIndent;
+				String suffix = ""; 
+				String gavElementsIndent = request.getLineIndentInfo().getWhitespacesIndent(); 
+				if (strategy instanceof InsertionStrategy.NodeWithChildrenInsertionStrategy) {
+					String elementName = ((InsertionStrategy.NodeWithChildrenInsertionStrategy)strategy).elementName;
+					gavElementsIndent += DOMUtils.getOneLevelIndent(request);
+					newText += "<" + elementName + ">" + request.getLineIndentInfo().getLineDelimiter() + gavElementsIndent;
+					suffix = request.getLineIndentInfo().getLineDelimiter() + request.getLineIndentInfo().getWhitespacesIndent() + "</" + elementName + ">";
 				}
 				if (insertGroupId) {
-					newText += "<groupId>" + groupIdArtifactId.groupId + "</groupId>" + request.getLineIndentInfo().getLineDelimiter() + request.getLineIndentInfo().getWhitespacesIndent();
-					if (newWrappingNode != null) {
-						newText += oneLevelIndent;
-					}
+					newText += "<groupId>" + groupIdArtifactId.groupId + "</groupId>" + request.getLineIndentInfo().getLineDelimiter() + gavElementsIndent;
 				}
 				newText += "<artifactId>" + groupIdArtifactId.artifactId + "</artifactId>";
 				if (insertVersion) {
-					newText += request.getLineIndentInfo().getLineDelimiter() + request.getLineIndentInfo().getWhitespacesIndent();
-					if (newWrappingNode != null) {
-						newText += oneLevelIndent;
-					}
+					newText += request.getLineIndentInfo().getLineDelimiter() + gavElementsIndent;
 					newText += "<version>" + version + "</version>";
 				}
-				if (newWrappingNode != null) {
-					newText += request.getLineIndentInfo().getLineDelimiter() + request.getLineIndentInfo().getWhitespacesIndent() + "</" + newWrappingNode + ">";
-				}
+				newText += suffix;
 				textEdit.setNewText(newText);
 			} catch (BadLocationException ex) {
 				ex.printStackTrace();
@@ -357,7 +452,7 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 		}).collect(Collectors.toList());
 	}
 	
-	private Collection<CompletionItem> internalCollectRemoteGAVCompletion(ICompletionRequest request, boolean onlyPlugins, boolean addWrappingNode) {
+	private Collection<CompletionItem> internalCollectRemoteGAVCompletion(ICompletionRequest request, boolean onlyPlugins, InsertionStrategy insertionStrategy) {
 		DOMElement node = request.getParentElement();
 		DOMDocument doc = request.getXMLDocument();
 
@@ -393,12 +488,12 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 						if (onlyPlugins) {
 							indexSearcher.getPluginArtifactIds(artifactToSearch, index).stream()
 									.map(artifactInfo -> toGAVCompletionItem(new GroupIdArtifactId(artifactInfo.getGroupId(), artifactInfo.getArtifactId()), new DefaultArtifactVersion(artifactInfo.getVersion()),
-											artifactInfo.getDescription(), request, null))
+											artifactInfo.getDescription(), request, insertionStrategy))
 									.forEach(items::add);
 						} else {
 							indexSearcher.getArtifactIds(artifactToSearch, index).stream()
 									.map(artifactInfo -> toGAVCompletionItem(new GroupIdArtifactId(artifactInfo.getGroupId(), artifactInfo.getArtifactId()), new DefaultArtifactVersion(artifactInfo.getVersion()),
-											artifactInfo.getDescription(), request, null))
+											artifactInfo.getDescription(), request, insertionStrategy))
 									.forEach(items::add);
 						}
 						return;
@@ -416,13 +511,13 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 					case "dependencies":
 						indexSearcher.getArtifactIds(artifactToSearch, index).stream()
 							.map(artifactInfo -> toGAVCompletionItem(new GroupIdArtifactId(artifactInfo.getGroupId(), artifactInfo.getArtifactId()), new DefaultArtifactVersion(artifactInfo.getVersion()),
-									artifactInfo.getDescription(), request, "dependency"))
+									artifactInfo.getDescription(), request, insertionStrategy))
 							.forEach(items::add);
 						return;
 					case "plugins":
 						indexSearcher.getPluginArtifactIds(artifactToSearch, index).stream()
 							.map(artifactInfo -> toGAVCompletionItem(new GroupIdArtifactId(artifactInfo.getGroupId(), artifactInfo.getArtifactId()), new DefaultArtifactVersion(artifactInfo.getVersion()),
-									artifactInfo.getDescription(), request, "plugin"))
+									artifactInfo.getDescription(), request, insertionStrategy))
 							.forEach(items::add);
 						return;
 					}
@@ -466,36 +561,6 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 			}
 		} finally {
 			snippetsLoaded = true;
-		}
-
-	}
-
-	private void collectParentCompletion(ICompletionRequest request, ICompletionResponse response) {
-		DOMElement node = request.getParentElement();
-		DOMDocument doc = request.getXMLDocument();
-		Range range = XMLPositionUtility.createRange(node.getStartTagCloseOffset() + 1, node.getEndTagOpenOffset(),
-				doc);
-		MavenProject mavenProject = cache.getLastSuccessfulMavenProject(doc);
-		if (mavenProject == null) {
-			return;
-		}
-		Model model = mavenProject.getModel();
-
-		switch (node.getLocalName()) {
-		case "artifactId":
-			response.addCompletionItem(toCompletionItem(model.getParent().getArtifactId(),
-					"The artifactId of the parent maven module.", range));
-			break;
-		case "groupId":
-			response.addCompletionItem(
-					toCompletionItem(model.getParent().getGroupId(), "The groupId of the parent maven module.", range));
-			break;
-		case "version":
-			response.addCompletionItem(
-					toCompletionItem(model.getParent().getVersion(), "The version of the parent maven module.", range));
-			break;
-		default:
-			break;
 		}
 
 	}

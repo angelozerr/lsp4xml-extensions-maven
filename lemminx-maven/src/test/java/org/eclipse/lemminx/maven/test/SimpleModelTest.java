@@ -8,7 +8,6 @@
  *******************************************************************************/
 package org.eclipse.lemminx.maven.test;
 
-import static org.eclipse.lemminx.maven.test.MavenLemminxTestsUtils.completionContains;
 import static org.eclipse.lemminx.maven.test.MavenLemminxTestsUtils.createTextDocumentItem;
 import static org.junit.Assert.assertTrue;
 
@@ -18,7 +17,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.eclipse.lsp4j.CompletionItem;
@@ -37,7 +35,6 @@ import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 public class SimpleModelTest {
@@ -99,12 +96,33 @@ public class SimpleModelTest {
 	}
 
 	@Test
-	@Ignore(value = "Nothing to test at the moment")
 	public void testLocalParentGAVCompletion()
 			throws IOException, InterruptedException, ExecutionException, URISyntaxException, TimeoutException {
-		// Some features for parent GAV
 		// * if relativePath is set and resolve to a pom or a folder containing a pom, GAV must be available for completion
+		{
+			TextDocumentItem textDocumentItem = createTextDocumentItem("/hierarchy/child/grandchild/pom.xml");
+			DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+			connection.languageServer.getTextDocumentService().didOpen(params);
+			Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService()
+					.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
+							new Position(4, 2)))
+					.get();
+			List<CompletionItem> items = completion.getRight().getItems();
+			assertTrue(items.stream().map(CompletionItem::getLabel).anyMatch(Label -> Label.startsWith("test-parent")));
+		}
 		// * if relativePath is not set and parent contains a pom, complete GAV from parent
+		{
+			TextDocumentItem textDocumentItem = createTextDocumentItem("/hierarchy/child/pom.xml");
+			DidOpenTextDocumentParams params = new DidOpenTextDocumentParams(textDocumentItem);
+			connection.languageServer.getTextDocumentService().didOpen(params);
+			Either<List<CompletionItem>, CompletionList> completion = connection.languageServer.getTextDocumentService()
+					.completion(new CompletionParams(new TextDocumentIdentifier(textDocumentItem.getUri()),
+							new Position(4, 2)))
+					.get();
+			List<CompletionItem> items = completion.getRight().getItems();
+			assertTrue(items.stream().map(CompletionItem::getLabel).anyMatch(Label -> Label.startsWith("test-parent")));
+		}
+		// TODO:
 		// * if relativePath is not set, complete with local repo artifacts with "pom" packaging
 		// * if relativePath is not set, complete with remote repo artifacts with "pom" packaging
 	}
