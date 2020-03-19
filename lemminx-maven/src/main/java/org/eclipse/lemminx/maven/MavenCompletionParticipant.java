@@ -89,13 +89,14 @@ public class MavenCompletionParticipant extends CompletionParticipantAdapter {
 	}
 
 	private boolean snippetsLoaded;
-	private final LocalRepositorySearcher localRepositorySearcher = new LocalRepositorySearcher(RepositorySystem.defaultUserLocalRepository);
+	private final LocalRepositorySearcher localRepositorySearcher;
 	private final MavenProjectCache cache;
 	private final RemoteRepositoryIndexSearcher indexSearcher;
 	private MavenPluginManager pluginManager;
 
-	public MavenCompletionParticipant(MavenProjectCache cache, RemoteRepositoryIndexSearcher indexSearcher, MavenPluginManager pluginManager) {
+	public MavenCompletionParticipant(MavenProjectCache cache, LocalRepositorySearcher localRepositorySearcher, RemoteRepositoryIndexSearcher indexSearcher, MavenPluginManager pluginManager) {
 		this.cache = cache;
+		this.localRepositorySearcher = localRepositorySearcher;
 		this.indexSearcher = indexSearcher;
 		this.pluginManager = pluginManager;
 	}

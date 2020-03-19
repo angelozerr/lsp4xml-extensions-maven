@@ -12,6 +12,7 @@ package org.eclipse.lemminx.maven;
 
 import org.apache.maven.Maven;
 import org.apache.maven.plugin.MavenPluginManager;
+import org.apache.maven.repository.RepositorySystem;
 import org.codehaus.plexus.ContainerConfiguration;
 import org.codehaus.plexus.DefaultContainerConfiguration;
 import org.codehaus.plexus.DefaultPlexusContainer;
@@ -22,6 +23,7 @@ import org.codehaus.plexus.classworlds.ClassWorld;
 import org.codehaus.plexus.classworlds.realm.ClassRealm;
 import org.codehaus.plexus.classworlds.realm.NoSuchRealmException;
 import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
+import org.eclipse.lemminx.maven.searcher.LocalRepositorySearcher;
 import org.eclipse.lemminx.maven.searcher.RemoteRepositoryIndexSearcher;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4xml.dom.DOMDocument;
@@ -48,6 +50,10 @@ public class MavenPlugin implements IXMLExtension {
 
 	private RemoteRepositoryIndexSearcher indexSearcher;
 
+	private LocalRepositorySearcher localRepositorySearcher;
+
+	private MavenDefinitionParticipant definitionParticipant;
+
 	public MavenPlugin() {
 	}
 
@@ -64,10 +70,11 @@ public class MavenPlugin implements IXMLExtension {
 		} catch (PlexusContainerException e) {
 			e.printStackTrace();
 		}
+		localRepositorySearcher = new LocalRepositorySearcher(RepositorySystem.defaultUserLocalRepository);
 		indexSearcher = new RemoteRepositoryIndexSearcher(container);
 		cache.addProjectParsedListener(indexSearcher::updateKnownRepositories);
 		try {
-			completionParticipant = new MavenCompletionParticipant(cache, indexSearcher, container.lookup(MavenPluginManager.class));
+			completionParticipant = new MavenCompletionParticipant(cache, localRepositorySearcher, indexSearcher, container.lookup(MavenPluginManager.class));
 		} catch (ComponentLookupException e) {
 			e.printStackTrace();
 		}
@@ -80,7 +87,8 @@ public class MavenPlugin implements IXMLExtension {
 		} catch (ComponentLookupException e) {
 			e.printStackTrace();
 		}
-
+		definitionParticipant = new MavenDefinitionParticipant(cache, localRepositorySearcher);
+		registry.registerDefinitionParticipant(definitionParticipant);
 	}
 
 	/* Copied from m2e */
@@ -120,6 +128,8 @@ public class MavenPlugin implements IXMLExtension {
 		registry.unregisterCompletionParticipant(completionParticipant);
 		registry.unregisterDiagnosticsParticipant(diagnosticParticipant);
 		registry.unregisterHoverParticipant(hoverParticipant);
+		registry.unregisterDefinitionParticipant(definitionParticipant);
+		localRepositorySearcher.stop();
 		indexSearcher.closeContext();
 		indexSearcher = null;
 		cache = null;

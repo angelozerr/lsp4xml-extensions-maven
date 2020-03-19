@@ -44,8 +44,7 @@ public class ClientServerConnection {
 		PipedOutputStream clientOutputStream = new PipedOutputStream(serverInputStream);
 		PipedOutputStream serverOutputStream = new PipedOutputStream();
 		PipedInputStream clientInputStream = new PipedInputStream(serverOutputStream);
-		XMLServerLauncher launcher = new XMLServerLauncher();
-		server = launcher.launch(serverInputStream, serverOutputStream);
+		server = XMLServerLauncher.launch(serverInputStream, serverOutputStream);
 		Launcher<LanguageServer> clientLauncher = LSPLauncher.createClientLauncher(new LanguageClient() {
 			@Override public void telemetryEvent(Object object) {
 			}

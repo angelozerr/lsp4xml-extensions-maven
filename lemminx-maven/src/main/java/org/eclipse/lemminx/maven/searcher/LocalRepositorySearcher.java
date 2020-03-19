@@ -28,6 +28,7 @@ import java.util.stream.Collectors;
 import org.apache.maven.artifact.versioning.ArtifactVersion;
 import org.apache.maven.artifact.versioning.DefaultArtifactVersion;
 import org.apache.maven.index.artifact.Gav;
+import org.apache.maven.model.Dependency;
 
 public class LocalRepositorySearcher {
 	
@@ -35,10 +36,11 @@ public class LocalRepositorySearcher {
 
 	public LocalRepositorySearcher(File localRepository) {
 		this.localRepository = localRepository;
-		
 	}
 
 	private Map<File, Collection<Gav>> cache = new HashMap<>();
+	private WatchKey watchKey;
+	private WatchService watchService;
 
 	public Set<String> searchGroupIds() throws IOException {
 		return getLocalArtifactsLastVersion().stream().map(Gav::getGroupId).distinct().collect(Collectors.toSet());
@@ -57,8 +59,8 @@ public class LocalRepositorySearcher {
 		if (res == null) {
 			res = computeLocalArtifacts();
 			Path localRepoPath = localRepository.toPath();
-			WatchService watchService = localRepoPath.getFileSystem().newWatchService();
-			localRepoPath.register(watchService, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_DELETE);
+			watchService = localRepoPath.getFileSystem().newWatchService();
+			watchKey = localRepoPath.register(watchService, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_DELETE);
 			new Thread(() -> {
 				WatchKey key;
 				try {
@@ -106,6 +108,23 @@ public class LocalRepositorySearcher {
 			}
 		});
 		return groupIdArtifactIdToVersion.values();
+	}
+
+	public File findLocalFile(Dependency dependency) {
+		return new File(localRepository, dependency.getGroupId().replace('.', File.separatorChar) + File.separatorChar + dependency.getArtifactId() + File.separatorChar + dependency.getVersion() + File.separatorChar + dependency.getArtifactId() + '-' + dependency.getVersion() + ".pom");
+	}
+
+	public void stop() {
+		if (watchService != null && watchKey != null) {
+			watchKey.cancel();
+			try {
+				watchService.close();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+			watchKey = null;
+			watchService = null;
+		}
 	}
 
 }
