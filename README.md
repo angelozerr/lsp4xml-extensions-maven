@@ -1,4 +1,4 @@
-# lsp4xml-extensions-maven
+# LemMinX-Maven
 
 This project is an Eclipse LemMinX (XML Language Server) Extension for Maven. It provides :
 
