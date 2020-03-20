@@ -14,6 +14,7 @@ import java.io.PipedOutputStream;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.function.Predicate;
 
@@ -70,9 +71,10 @@ public class ClientServerConnection {
 		languageServer.initialize(initParams);
 	}
 
-	public void stop() {
+	public void stop() throws InterruptedException, ExecutionException {
 		languageServer.shutdown();
-		server.cancel(true);
+		server.cancel(false);
+		//server.get();
 		clientFuture.cancel(true);
 	}
 

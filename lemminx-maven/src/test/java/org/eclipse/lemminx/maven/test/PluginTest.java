@@ -32,7 +32,6 @@ import org.eclipse.lsp4j.TextEdit;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 public class PluginTest {
@@ -45,7 +44,7 @@ public class PluginTest {
 	}
 
 	@After
-	public void tearDown() {
+	public void tearDown() throws InterruptedException, ExecutionException {
 		connection.stop();
 	}
 	
@@ -121,7 +120,6 @@ public class PluginTest {
 
 	}
 	
-	@Ignore(value = "Remote repo is down")
 	@Test
  	public void testPluginArtifactHover() throws IOException, InterruptedException, ExecutionException, URISyntaxException, TimeoutException {
  		TextDocumentItem textDocumentItem = MavenLemminxTestsUtils.createTextDocumentItem("/pom-plugin-artifact-hover.xml");

@@ -27,27 +27,24 @@ import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.TextDocumentItem;
 import org.eclipse.lsp4j.TextDocumentPositionParams;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Ignore;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 
 public class RemoteRepositoryTest {
 
-	/* This needs to be static because of https://github.com/angelozerr/lsp4xml/issues/610 */
-	private static ClientServerConnection connection;
+	private ClientServerConnection connection;
 
-	@BeforeClass
-	public static void setUp() throws IOException {
+	@Before
+	public  void setUp() throws IOException {
 		connection = new ClientServerConnection();
 	}
 
-	@AfterClass
-	public static void tearDown() throws InterruptedException {
+	@After
+	public  void tearDown() throws InterruptedException, ExecutionException {
 		connection.stop();
 	}
 
-	@Ignore(value = "Remote repo is down")
 	@Test(timeout=120000)
 	public void testRemoteGroupIdCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-remote-groupId-complete.xml");
@@ -62,7 +59,6 @@ public class RemoteRepositoryTest {
 		assertTrue(completionContains(items, desiredCompletion));
 	}
 	
-	@Ignore(value = "Remote repo is down")
 	@Test(timeout=120000)
 	public void testRemoteArtifactIdCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-remote-artifactId-complete.xml");
@@ -77,7 +73,6 @@ public class RemoteRepositoryTest {
 		assertTrue(completionContains(items, desiredCompletion));
 	}
 	
-	@Ignore(value = "Remote repo is down")
 	@Test(timeout=120000)
 	public void testRemoteVersionCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-remote-version-complete.xml");
@@ -92,7 +87,6 @@ public class RemoteRepositoryTest {
 		assertTrue(completionContains(items, desiredCompletion));
 	}
 
-	@Ignore(value = "Remote repo is down")
 	@Test(timeout=15000)
  	public void testRemoteArtifactHover() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
  		TextDocumentItem textDocumentItem = MavenLemminxTestsUtils.createTextDocumentItem("/pom-remote-artifact-hover.xml");
@@ -107,7 +101,6 @@ public class RemoteRepositoryTest {
 
 	}
 	
-	@Ignore(value = "Remote repo is down")
 	@Test(timeout=120000)
 	public void testRemotePluginGroupIdCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-remote-plugin-groupId-complete.xml");
@@ -122,7 +115,6 @@ public class RemoteRepositoryTest {
 		assertTrue(completionContains(items, desiredCompletion));
 	}
 	
-	@Ignore(value = "Remote repo is down")
 	@Test(timeout=120000)
 	public void testRemotePluginArtifactIdCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-remote-plugin-artifactId-complete.xml");
@@ -137,7 +129,6 @@ public class RemoteRepositoryTest {
 		assertTrue(completionContains(items, desiredCompletion));
 	}
 	
-	@Ignore(value = "Remote repo is down")
 	@Test(timeout=120000)
 	public void testRemotePluginVersionCompletion() throws IOException, InterruptedException, ExecutionException, URISyntaxException {
 		TextDocumentItem textDocumentItem = createTextDocumentItem("/pom-remote-plugin-version-complete.xml");
